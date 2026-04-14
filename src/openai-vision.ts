@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 export async function analyzeImageWithOpenAI(
   apiKey: string,
@@ -26,6 +27,26 @@ export async function analyzeImageWithOpenAI(
       },
     ],
     max_tokens: 4096,
+  });
+
+  const text = response.choices[0]?.message?.content;
+  if (!text || !text.trim()) {
+    throw new Error("The model returned an empty response.");
+  }
+  return text.trim();
+}
+
+export async function chatWithHistoryOpenAI(
+  apiKey: string,
+  model: string,
+  messages: ChatCompletionMessageParam[],
+): Promise<string> {
+  const client = new OpenAI({ apiKey });
+
+  const response = await client.chat.completions.create({
+    model,
+    messages,
+    max_tokens: 8192,
   });
 
   const text = response.choices[0]?.message?.content;

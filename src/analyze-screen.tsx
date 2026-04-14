@@ -10,6 +10,7 @@ import {
   environment,
   getPreferenceValues,
   showToast,
+  useNavigation,
 } from "@raycast/api";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,6 +19,7 @@ import { analyzeImage, formatVisionError } from "./analyze-image";
 import { analyzeWebPageText, buildWebPageUserMessage } from "./analyze-text";
 import { BrowserTabError, getActiveBrowserTab } from "./browser-tab";
 import { CaptureError, CaptureMode, captureToFile, safeUnlink } from "./capture";
+import { type ChatTurn, continueConversation, type SessionContext } from "./continue-chat";
 import { FetchPageError, fetchPageAsPlainText } from "./fetch-page-text";
 import { parseModelPreference } from "./model";
 
@@ -27,11 +29,6 @@ type FormValues = {
   contentSource: ContentSource;
   mode: CaptureMode;
   prompt: string;
-};
-
-type ChatMessage = {
-  role: "user" | "assistant";
-  content: string;
 };
 
 function analyzingLabel(parsed: ReturnType<typeof parseModelPreference>): string {
@@ -55,25 +52,99 @@ function previewText(text: string, max = 120): string {
 /** Renders arbitrary text safely as markdown (fenced block). */
 function userInstructionsMarkdown(body: string): string {
   const fence = body.includes("```") ? "````" : "```";
-  return `### Your instructions\n\n${fence}\n${body}\n${fence}`;
+  return `### Message\n\n${fence}\n${body}\n${fence}`;
+}
+
+type ReplyFormValues = { reply: string };
+
+function ReplyForm({ onSubmit }: { onSubmit: (text: string) => void }) {
+  return (
+    <Form
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Send"
+            icon={Icon.ArrowRight}
+            onSubmit={(values: ReplyFormValues) => {
+              onSubmit(values.reply ?? "");
+            }}
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.TextArea id="reply" title="Follow-up" placeholder="Ask a follow-up question…" />
+    </Form>
+  );
 }
 
 export default function AnalyzeScreenCommand() {
   const prefs = getPreferenceValues<Preferences>();
+  const { push, pop } = useNavigation();
   const defaultPrompt =
     prefs.defaultPrompt?.trim() ||
     "Describe what you see on the screen. Call out any text, UI elements, errors, or notable details.";
 
   const [phase, setPhase] = useState<"setup" | "chat">("setup");
   const [formKey, setFormKey] = useState(0);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatTurn[]>([]);
+  const [session, setSession] = useState<SessionContext | null>(null);
   const [contentSource, setContentSource] = useState<ContentSource>("screen");
 
   const startOver = useCallback(() => {
     setMessages([]);
+    setSession(null);
     setPhase("setup");
     setFormKey((k) => k + 1);
   }, []);
+
+  const sendFollowUp = useCallback(
+    async (followUpRaw: string) => {
+      const followUp = followUpRaw.trim();
+      if (!followUp || !session) {
+        return;
+      }
+
+      const modelPref = prefs.model?.trim() || "openai:gpt-4o-mini";
+      const parsed = parseModelPreference(modelPref);
+      const thread: ChatTurn[] = [...messages, { role: "user", content: followUp }];
+
+      const loading = await showToast({
+        style: Toast.Style.Animated,
+        title: "Waiting for reply…",
+      });
+
+      try {
+        const reply = await continueConversation(prefs, parsed, session, thread);
+        setMessages([...thread, { role: "assistant", content: reply }]);
+        await Clipboard.copy(reply);
+        loading.hide();
+        await showToast({
+          style: Toast.Style.Success,
+          title: "Reply ready",
+          message: "Copied to clipboard.",
+        });
+      } catch (err) {
+        loading.hide();
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Message failed",
+          message: formatVisionError(err),
+        });
+      }
+    },
+    [messages, prefs, session],
+  );
+
+  const openReply = useCallback(() => {
+    push(
+      <ReplyForm
+        onSubmit={(text) => {
+          pop();
+          void sendFollowUp(text);
+        }}
+      />,
+    );
+  }, [pop, push, sendFollowUp]);
 
   async function handleSubmit(values: FormValues) {
     const modelPref = prefs.model?.trim() || "openai:gpt-4o-mini";
@@ -101,13 +172,14 @@ export default function AnalyzeScreenCommand() {
           { role: "user", content: userDisplay },
           { role: "assistant", content: answer },
         ]);
+        setSession({ source: "browser" });
         setPhase("chat");
         loading.hide();
         await Clipboard.copy(answer);
         await showToast({
           style: Toast.Style.Success,
           title: "Response ready",
-          message: "Copied to clipboard. Open the list items to read the full reply.",
+          message: "Copied to clipboard. Use Continue chat for follow-ups.",
         });
         return;
       }
@@ -124,13 +196,14 @@ export default function AnalyzeScreenCommand() {
         { role: "user", content: prompt },
         { role: "assistant", content: answer },
       ]);
+      setSession({ source: "screen", screenBase64: base64 });
       setPhase("chat");
       loading.hide();
       await Clipboard.copy(answer);
       await showToast({
         style: Toast.Style.Success,
         title: "Response ready",
-        message: "Copied to clipboard. Open the list items to read the full reply.",
+        message: "Copied to clipboard. Use Continue chat for follow-ups.",
       });
     } catch (err) {
       loading.hide();
@@ -176,56 +249,56 @@ export default function AnalyzeScreenCommand() {
     }
   }
 
-  if (phase === "chat" && messages.length > 0) {
-    const userMsg = messages.find((m) => m.role === "user");
-    const assistantMsg = messages.find((m) => m.role === "assistant");
+  if (phase === "chat" && messages.length > 0 && session) {
+    const lastIdx = messages.length - 1;
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
 
     return (
       <List
         navigationTitle="Screen AI"
         searchBarPlaceholder="Search in this chat"
         isShowingDetail
-        selectedItemId="assistant"
+        selectedItemId={`msg-${lastIdx}`}
         actions={
           <ActionPanel>
+            <Action
+              title="Continue Chat"
+              icon={Icon.Message}
+              shortcut={{ modifiers: ["cmd"], key: "n" }}
+              onAction={openReply}
+            />
             <Action title="New Analysis" icon={Icon.Rewind} onAction={startOver} />
-            {assistantMsg ? (
-              <Action.CopyToClipboard title="Copy Assistant Reply" content={assistantMsg.content} />
-            ) : null}
+            {lastAssistant ? <Action.CopyToClipboard title="Copy Last Reply" content={lastAssistant.content} /> : null}
           </ActionPanel>
         }
       >
-        <List.Section title="Chat" subtitle="Your request and the model reply">
-          {userMsg ? (
+        <List.Section title="Conversation" subtitle={`${messages.length} messages`}>
+          {messages.map((m, i) => (
             <List.Item
-              id="user"
-              icon={{ source: Icon.Person, tintColor: Color.Blue }}
-              title="You"
-              subtitle={previewText(userMsg.content)}
-              detail={<List.Item.Detail markdown={userInstructionsMarkdown(userMsg.content)} />}
+              key={`msg-${i}`}
+              id={`msg-${i}`}
+              icon={
+                m.role === "user"
+                  ? { source: Icon.Person, tintColor: Color.Blue }
+                  : { source: Icon.Stars, tintColor: Color.Purple }
+              }
+              title={m.role === "user" ? "You" : "Assistant"}
+              subtitle={previewText(m.content)}
+              detail={
+                <List.Item.Detail markdown={m.role === "user" ? userInstructionsMarkdown(m.content) : m.content} />
+              }
               actions={
                 <ActionPanel>
-                  <Action.CopyToClipboard title="Copy Request" content={userMsg.content} />
+                  <Action.CopyToClipboard
+                    title={m.role === "user" ? "Copy Message" : "Copy Reply"}
+                    content={m.content}
+                  />
+                  <Action title="Continue Chat" icon={Icon.Message} onAction={openReply} />
                   <Action title="New Analysis" icon={Icon.Rewind} onAction={startOver} />
                 </ActionPanel>
               }
             />
-          ) : null}
-          {assistantMsg ? (
-            <List.Item
-              id="assistant"
-              icon={{ source: Icon.Stars, tintColor: Color.Purple }}
-              title="Assistant"
-              subtitle={previewText(assistantMsg.content)}
-              detail={<List.Item.Detail markdown={assistantMsg.content} />}
-              actions={
-                <ActionPanel>
-                  <Action.CopyToClipboard title="Copy Reply" content={assistantMsg.content} />
-                  <Action title="New Analysis" icon={Icon.Rewind} onAction={startOver} />
-                </ActionPanel>
-              }
-            />
-          ) : null}
+          ))}
         </List.Section>
       </List>
     );
