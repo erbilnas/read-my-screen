@@ -14,7 +14,7 @@ type ExtensionPreferences = {
   "anthropicApiKey"?: string,
   /** Google Gemini API key - Used when a Gemini model is selected. From aistudio.google.com/apikey */
   "geminiApiKey"?: string,
-  /** Vision model - Provider and model. Use the matching API key in preferences. */
+  /** Model - Provider and model (vision for screenshots, text for browser pages). Use the matching API key. */
   "model": "openai:gpt-4o-mini" | "openai:gpt-4o" | "openai:gpt-4.1-mini" | "openai:gpt-4.1" | "anthropic:claude-sonnet-4-20250514" | "anthropic:claude-haiku-4-5-20251001" | "gemini:gemini-2.5-flash" | "gemini:gemini-2.5-pro" | "gemini:gemini-2.0-flash",
   /** Default instructions - Pre-filled analysis instructions in the form (you can edit each run). */
   "defaultPrompt": string

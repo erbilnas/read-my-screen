@@ -60,6 +60,40 @@ export async function analyzeImageWithAnthropic(
   return trimmed;
 }
 
+export async function analyzeTextWithAnthropic(apiKey: string, model: string, userMessage: string): Promise<string> {
+  const res = await fetch(ANTHROPIC_API, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": ANTHROPIC_VERSION,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 8192,
+      messages: [{ role: "user", content: [{ type: "text", text: userMessage }] }],
+    }),
+  });
+
+  const data = (await res.json()) as MessagesResponse;
+
+  if (!res.ok) {
+    const msg = data.error?.message || res.statusText || `HTTP ${res.status}`;
+    throw new Error(formatAnthropicHttpError(res.status, msg));
+  }
+
+  const parts = data.content;
+  if (!parts?.length) {
+    throw new Error("The model returned an empty response.");
+  }
+  const text = parts.map((p) => (p.type === "text" && p.text ? p.text : "")).join("");
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error("The model returned an empty response.");
+  }
+  return trimmed;
+}
+
 function formatAnthropicHttpError(status: number, message: string): string {
   if (status === 401) {
     return "Invalid Anthropic API key. Check Screen AI → Anthropic API key in preferences.";

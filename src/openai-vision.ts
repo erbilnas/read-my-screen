@@ -35,6 +35,22 @@ export async function analyzeImageWithOpenAI(
   return text.trim();
 }
 
+export async function analyzeTextWithOpenAI(apiKey: string, model: string, userMessage: string): Promise<string> {
+  const client = new OpenAI({ apiKey });
+
+  const response = await client.chat.completions.create({
+    model,
+    messages: [{ role: "user", content: userMessage }],
+    max_tokens: 8192,
+  });
+
+  const text = response.choices[0]?.message?.content;
+  if (!text || !text.trim()) {
+    throw new Error("The model returned an empty response.");
+  }
+  return text.trim();
+}
+
 export function formatOpenAIError(err: unknown): string {
   if (err && typeof err === "object" && "status" in err) {
     const status = (err as { status?: number }).status;
