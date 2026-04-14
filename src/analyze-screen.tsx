@@ -11,13 +11,27 @@ import {
 } from "@raycast/api";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { analyzeImage, formatVisionError } from "./analyze-image";
 import { CaptureError, CaptureMode, captureToFile, safeUnlink } from "./capture";
-import { analyzeImageWithOpenAI, formatOpenAIError } from "./openai-vision";
+import { parseModelPreference } from "./model";
 
 type FormValues = {
   mode: CaptureMode;
   prompt: string;
 };
+
+function analyzingLabel(parsed: ReturnType<typeof parseModelPreference>): string {
+  switch (parsed.provider) {
+    case "openai":
+      return "Analyzing with OpenAI…";
+    case "anthropic":
+      return "Analyzing with Claude…";
+    case "gemini":
+      return "Analyzing with Gemini…";
+    default:
+      return "Analyzing…";
+  }
+}
 
 export default function AnalyzeScreenCommand() {
   const prefs = getPreferenceValues<Preferences>();
@@ -26,17 +40,9 @@ export default function AnalyzeScreenCommand() {
     "Describe what you see on the screen. Call out any text, UI elements, errors, or notable details.";
 
   async function handleSubmit(values: FormValues) {
-    const apiKey = prefs.apiKey?.trim();
-    if (!apiKey) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "Missing API key",
-        message: "Add your OpenAI API key in Raycast → Extensions → Screen AI → Preferences.",
-      });
-      return;
-    }
+    const modelPref = prefs.model?.trim() || "openai:gpt-4o-mini";
+    const parsed = parseModelPreference(modelPref);
 
-    const model = prefs.model?.trim() || "gpt-4o-mini";
     const prompt = values.prompt?.trim() || defaultPrompt;
     const outPath = join(environment.supportPath, `screen-ai-${Date.now()}.png`);
 
@@ -47,10 +53,10 @@ export default function AnalyzeScreenCommand() {
 
     try {
       await captureToFile(values.mode, outPath);
-      loading.title = "Analyzing with OpenAI…";
+      loading.title = analyzingLabel(parsed);
 
       const base64 = readFileSync(outPath, { encoding: "base64" });
-      const answer = await analyzeImageWithOpenAI(apiKey, model, base64, prompt);
+      const answer = await analyzeImage(prefs, parsed, base64, prompt);
 
       await Clipboard.copy(answer);
       loading.hide();
@@ -78,7 +84,7 @@ export default function AnalyzeScreenCommand() {
       await showToast({
         style: Toast.Style.Failure,
         title: "Analysis failed",
-        message: formatOpenAIError(err),
+        message: formatVisionError(err),
       });
     } finally {
       safeUnlink(outPath);
@@ -93,7 +99,7 @@ export default function AnalyzeScreenCommand() {
         </ActionPanel>
       }
     >
-      <Form.Description text="Requires Screen Recording permission for Raycast. Uses your OpenAI API key from preferences." />
+      <Form.Description text="Requires Screen Recording for Raycast. Set the API key for the provider you pick in Vision model (OpenAI, Anthropic, or Google)." />
       <Form.Dropdown
         id="mode"
         title="Capture"
