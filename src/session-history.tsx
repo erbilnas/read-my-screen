@@ -1,52 +1,21 @@
-import {
-  Action,
-  ActionPanel,
-  Clipboard,
-  Color,
-  Icon,
-  List,
-  Toast,
-  getPreferenceValues,
-  showToast,
-  useNavigation,
-} from "@raycast/api";
-import { pathToFileURL } from "node:url";
+import { Clipboard, Toast, getPreferenceValues, showToast, useNavigation } from "@raycast/api";
 import { useCallback, useEffect, useState } from "react";
 import { formatVisionError } from "./analyze-image";
 import { ReplyForm, SessionModelForm } from "./chat-forms";
 import { type ChatTurn, continueConversation, type SessionContext } from "./continue-chat";
-import { modelTitleForValue, parseModelPreference } from "./model";
+import { parseModelPreference } from "./model";
 import { regenerateLastTurn } from "./regenerate-turn";
 import {
   chatToMarkdown,
   deleteStoredSession,
-  getSessionScreenImagePath,
-  historyListPreview,
   loadStoredSessions,
   readSessionImageFile,
   type StoredSession,
 } from "./stored-sessions";
 import { formatUsageHint, type TokenUsage } from "./token-usage";
 import { EXTENSION_DISPLAY_NAME } from "./extension-brand";
-
-function previewText(text: string, max = 120): string {
-  const t = text.trim().replace(/\s+/g, " ");
-  return t.length <= max ? t : `${t.slice(0, max)}…`;
-}
-
-function userInstructionsMarkdown(body: string): string {
-  const fence = body.includes("```") ? "````" : "```";
-  return `### Message\n\n${fence}\n${body}\n${fence}`;
-}
-
-function historyDetailMarkdown(s: StoredSession): string {
-  const imgPath = getSessionScreenImagePath(s);
-  const preview = historyListPreview(s);
-  if (imgPath) {
-    return `![Captured screen](${pathToFileURL(imgPath).href})\n\n_${preview}_`;
-  }
-  return preview;
-}
+import { ChatThreadList } from "./ui/chat-thread-list";
+import { HistorySessionsList } from "./ui/history-session-list";
 
 export default function SessionHistoryCommand() {
   const prefs = getPreferenceValues<Preferences>();
@@ -221,116 +190,23 @@ export default function SessionHistoryCommand() {
   );
 
   if (phase === "chat" && messages.length > 0 && session) {
-    const lastIdx = messages.length - 1;
-    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-
     return (
-      <List
+      <ChatThreadList
         navigationTitle={`${EXTENSION_DISPLAY_NAME} · Session`}
-        searchBarPlaceholder="Search in this chat"
-        isShowingDetail
-        selectedItemId={`msg-${lastIdx}`}
-        actions={
-          <ActionPanel>
-            <Action
-              title="Continue Chat"
-              icon={Icon.Message}
-              shortcut={{ modifiers: ["cmd"], key: "n" }}
-              onAction={openReply}
-            />
-            <Action
-              title="Copy Conversation as Markdown"
-              icon={Icon.Document}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
-              onAction={() => void copyConversationMarkdown()}
-            />
-            <Action title="Back to History" icon={Icon.ArrowLeft} onAction={backToList} />
-            <Action
-              title="Regenerate Last Reply"
-              icon={Icon.ArrowClockwise}
-              shortcut={{ modifiers: ["cmd"], key: "r" }}
-              onAction={() => void runRegenerate()}
-            />
-            <Action title="Change Model for This Chat" icon={Icon.Gear} onAction={openSessionModelPicker} />
-            {lastAssistant ? <Action.CopyToClipboard title="Copy Last Reply" content={lastAssistant.content} /> : null}
-          </ActionPanel>
-        }
-      >
-        <List.Section
-          title="Conversation"
-          subtitle={`${modelTitleForValue(effectiveSessionModel)} · ${messages.length} messages${formatUsageHint(lastRequestUsage ?? undefined, showTokenUsagePref)}`}
-        >
-          {messages.map((m, i) => (
-            <List.Item
-              key={`msg-${i}`}
-              id={`msg-${i}`}
-              icon={
-                m.role === "user"
-                  ? { source: Icon.Person, tintColor: Color.Blue }
-                  : { source: Icon.Stars, tintColor: Color.Purple }
-              }
-              title={m.role === "user" ? "You" : "Assistant"}
-              subtitle={previewText(m.content)}
-              detail={
-                <List.Item.Detail markdown={m.role === "user" ? userInstructionsMarkdown(m.content) : m.content} />
-              }
-              actions={
-                <ActionPanel>
-                  <Action.CopyToClipboard
-                    title={m.role === "user" ? "Copy Message" : "Copy Reply"}
-                    content={m.content}
-                  />
-                  <Action title="Continue Chat" icon={Icon.Message} onAction={openReply} />
-                  <Action
-                    title="Regenerate Last Reply"
-                    icon={Icon.ArrowClockwise}
-                    onAction={() => void runRegenerate()}
-                  />
-                  <Action title="Change Model for This Chat" icon={Icon.Gear} onAction={openSessionModelPicker} />
-                  <Action
-                    title="Copy Conversation as Markdown"
-                    icon={Icon.Document}
-                    onAction={() => void copyConversationMarkdown()}
-                  />
-                  <Action title="Back to History" icon={Icon.ArrowLeft} onAction={backToList} />
-                </ActionPanel>
-              }
-            />
-          ))}
-        </List.Section>
-      </List>
+        messages={messages}
+        effectiveSessionModel={effectiveSessionModel}
+        lastRequestUsage={lastRequestUsage}
+        showTokenUsage={showTokenUsagePref}
+        openReply={openReply}
+        copyConversationMarkdown={copyConversationMarkdown}
+        runRegenerate={runRegenerate}
+        openSessionModelPicker={openSessionModelPicker}
+        backToHistory={backToList}
+      />
     );
   }
 
   return (
-    <List navigationTitle="Session history" searchBarPlaceholder="Search sessions" isShowingDetail>
-      <List.Section title="Recent" subtitle={`${historySessions.length} saved`}>
-        {historySessions.map((s) => (
-          <List.Item
-            key={s.id}
-            id={s.id}
-            icon={s.source === "browser" ? Icon.Globe : Icon.Image}
-            title={s.title}
-            subtitle={historyListPreview(s)}
-            detail={<List.Item.Detail markdown={historyDetailMarkdown(s)} />}
-            accessories={[
-              { text: new Date(s.createdAt).toLocaleString() },
-              { text: s.source === "browser" ? "Browser" : "Screen" },
-            ]}
-            actions={
-              <ActionPanel>
-                <Action title="Open" icon={Icon.ArrowRight} onAction={() => restoreFromHistory(s)} />
-                <Action
-                  title="Delete"
-                  icon={Icon.Trash}
-                  style={Action.Style.Destructive}
-                  onAction={() => void handleDeleteHistory(s.id)}
-                />
-              </ActionPanel>
-            }
-          />
-        ))}
-      </List.Section>
-    </List>
+    <HistorySessionsList sessions={historySessions} onRestore={restoreFromHistory} onDelete={handleDeleteHistory} />
   );
 }

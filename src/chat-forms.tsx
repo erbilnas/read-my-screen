@@ -1,6 +1,34 @@
 import { Action, ActionPanel, Form, Icon } from "@raycast/api";
 import { MODEL_PREFERENCE_OPTIONS } from "./model";
 
+export type SavePresetFormValues = { title: string };
+
+export function SavePresetForm({
+  promptToSave,
+  onSave,
+}: {
+  promptToSave: string;
+  onSave: (title: string, prompt: string) => void;
+}) {
+  return (
+    <Form
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Save Preset"
+            icon={Icon.Plus}
+            onSubmit={(values: SavePresetFormValues) => {
+              onSave(values.title ?? "", promptToSave);
+            }}
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.TextField id="title" title="Preset name" placeholder="e.g. Ticket description" />
+    </Form>
+  );
+}
+
 export type ReplyFormValues = { reply: string };
 
 export function ReplyForm({ onSubmit }: { onSubmit: (text: string) => void }) {
