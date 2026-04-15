@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="extension-icon.png" width="128" height="128" alt="Read My Screen extension icon" />
+</p>
+
 # Read My Screen
 
 **Read My Screen** is a [Raycast](https://www.raycast.com/) extension that turns **screenshots**, **clipboard images**, **image files**, and the **active browser tab** into AI-powered explanations — using **OpenAI** (GPT-4o and more), **Anthropic Claude**, or **Google Gemini**. You add your own API keys; requests go directly to the provider you choose (no custom backend).
