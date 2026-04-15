@@ -32,6 +32,8 @@ npm run build
 npm run lint
 ```
 
+**Versioning ([Changesets](https://github.com/changesets/changesets)):** The semver lives in `package.json` (`version`). After a change worth releasing, run `npm run changeset` to record it, then `npm run version-packages` to bump the version and update `CHANGELOG.md`. Publish to the Raycast Store with `npm run publish` when ready.
+
 **Icon:** The menu bar icon is generated from [`assets/extension-icon.svg`](assets/extension-icon.svg). After editing the SVG, run `npm run generate-icon` (writes `extension-icon.png` for Raycast).
 
 ## Configuration
