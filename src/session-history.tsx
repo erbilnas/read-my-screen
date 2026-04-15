@@ -27,6 +27,7 @@ import {
   type StoredSession,
 } from "./stored-sessions";
 import { formatUsageHint, type TokenUsage } from "./token-usage";
+import { EXTENSION_DISPLAY_NAME } from "./extension-brand";
 
 function previewText(text: string, max = 120): string {
   const t = text.trim().replace(/\s+/g, " ");
@@ -225,7 +226,7 @@ export default function SessionHistoryCommand() {
 
     return (
       <List
-        navigationTitle="Screen AI · Session"
+        navigationTitle={`${EXTENSION_DISPLAY_NAME} · Session`}
         searchBarPlaceholder="Search in this chat"
         isShowingDetail
         selectedItemId={`msg-${lastIdx}`}

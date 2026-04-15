@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Read My Screen">
+  <defs>
+    <linearGradient id="bg" x1="64" y1="48" x2="448" y2="464" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="55%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="120" y1="100" x2="380" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="s" x="-8%" y="-8%" width="116%" height="116%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#1e1b4b" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <!-- Squircle -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#shine)"/>
+  <!-- Monitor -->
+  <g filter="url(#s)">
+    <rect x="88" y="108" width="336" height="248" rx="20" fill="#f8fafc"/>
+    <rect x="104" y="124" width="304" height="200" rx="12" fill="#1e293b"/>
+    <!-- Text lines on screen -->
+    <rect x="128" y="152" width="200" height="14" rx="7" fill="#94a3b8"/>
+    <rect x="128" y="180" width="256" height="14" rx="7" fill="#64748b"/>
+    <rect x="128" y="208" width="220" height="14" rx="7" fill="#64748b"/>
+    <rect x="128" y="236" width="180" height="14" rx="7" fill="#475569"/>
+    <!-- Highlight: focus bar -->
+    <rect x="128" y="264" width="240" height="18" rx="9" fill="#a5b4fc"/>
+    <rect x="136" y="268" width="72" height="10" rx="5" fill="#4f46e5"/>
+    <!-- Stand -->
+    <rect x="232" y="356" width="48" height="36" rx="8" fill="#e2e8f0"/>
+    <rect x="176" y="384" width="160" height="22" rx="11" fill="#cbd5e1"/>
+  </g>
+  <!-- Accent: AI hint -->
+  <circle cx="392" cy="132" r="14" fill="#fbbf24"/>
+  <circle cx="392" cy="132" r="6" fill="#b45309"/>
+</svg>

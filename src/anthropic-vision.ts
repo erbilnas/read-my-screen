@@ -1,3 +1,4 @@
+import { EXTENSION_DISPLAY_NAME } from "./extension-brand";
 import type { ModelResponse, TokenUsage } from "./token-usage";
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
@@ -111,7 +112,7 @@ export async function analyzeTextWithAnthropic(
 
 function formatAnthropicHttpError(status: number, message: string): string {
   if (status === 401) {
-    return "Invalid Anthropic API key. Check Screen AI → Anthropic API key in preferences.";
+    return `Invalid Anthropic API key. Check ${EXTENSION_DISPLAY_NAME} → Anthropic API key in preferences.`;
   }
   if (status === 429) {
     return "Rate limited by Anthropic. Try again in a moment.";

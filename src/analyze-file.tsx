@@ -27,6 +27,7 @@ import {
 import { type ChatTurn, continueConversation, type SessionContext } from "./continue-chat";
 import { effectiveModelPreference, MODEL_PREFERENCE_OPTIONS, modelTitleForValue, parseModelPreference } from "./model";
 import { regenerateLastTurn } from "./regenerate-turn";
+import { EXTENSION_DISPLAY_NAME } from "./extension-brand";
 import { appendStoredSession, chatToMarkdown } from "./stored-sessions";
 import { formatUsageHint, type TokenUsage } from "./token-usage";
 
@@ -303,7 +304,7 @@ export default function AnalyzeFileCommand() {
 
     return (
       <List
-        navigationTitle="Screen AI · File"
+        navigationTitle={`${EXTENSION_DISPLAY_NAME} · File`}
         searchBarPlaceholder="Search in this chat"
         isShowingDetail
         selectedItemId={`msg-${lastIdx}`}
@@ -426,7 +427,9 @@ export default function AnalyzeFileCommand() {
         </ActionPanel>
       }
     >
-      <Form.Description text="Choose a local image file. API keys and default model are set in extension preferences." />
+      <Form.Description
+        text={`Choose a local image file. API keys and default model are set in ${EXTENSION_DISPLAY_NAME} preferences.`}
+      />
       <Form.Dropdown
         id="modelForRun"
         title="Model"

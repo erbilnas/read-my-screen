@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { EXTENSION_DISPLAY_NAME } from "./extension-brand";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { ModelResponse, TokenUsage } from "./token-usage";
 
@@ -97,7 +98,7 @@ export function formatOpenAIError(err: unknown): string {
   if (err && typeof err === "object" && "status" in err) {
     const status = (err as { status?: number }).status;
     if (status === 401) {
-      return "Invalid API key. Check your OpenAI API key in extension preferences.";
+      return `Invalid API key. Check your OpenAI API key in ${EXTENSION_DISPLAY_NAME} preferences.`;
     }
     if (status === 429) {
       return "Rate limited by OpenAI. Try again in a moment.";
