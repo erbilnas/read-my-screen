@@ -1,4 +1,5 @@
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { EXTENSION_DISPLAY_NAME } from "./extension-brand";
 import { chatWithHistoryOpenAI } from "./openai-vision";
 import type { ParsedModel } from "./model";
 import type { ModelResponse } from "./token-usage";
@@ -52,7 +53,7 @@ export async function continueConversation(
   if (provider === "openai") {
     const key = prefs.openaiApiKey?.trim();
     if (!key) {
-      throw new Error("Add your OpenAI API key in Screen AI extension preferences.");
+      throw new Error(`Add your OpenAI API key in ${EXTENSION_DISPLAY_NAME} preferences.`);
     }
     return chatWithHistoryOpenAI(key, modelId, buildOpenAIMessages(session, messages));
   }
@@ -60,14 +61,14 @@ export async function continueConversation(
   if (provider === "anthropic") {
     const key = prefs.anthropicApiKey?.trim();
     if (!key) {
-      throw new Error("Add your Anthropic API key in Screen AI extension preferences.");
+      throw new Error(`Add your Anthropic API key in ${EXTENSION_DISPLAY_NAME} preferences.`);
     }
     return chatWithHistoryAnthropic(key, modelId, session, messages);
   }
 
   const key = prefs.geminiApiKey?.trim();
   if (!key) {
-    throw new Error("Add your Google Gemini API key in Screen AI extension preferences.");
+    throw new Error(`Add your Google Gemini API key in ${EXTENSION_DISPLAY_NAME} preferences.`);
   }
   return chatWithHistoryGemini(key, modelId, session, messages);
 }

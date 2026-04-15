@@ -1,6 +1,9 @@
 import { LocalStorage } from "@raycast/api";
 
-export const CUSTOM_PRESETS_KEY = "screen-ai:custom-prompt-presets-v1";
+/** Previous key; data is migrated on read. */
+const LEGACY_CUSTOM_PRESETS_KEY = "screen-ai:custom-prompt-presets-v1";
+
+export const CUSTOM_PRESETS_KEY = "read-my-screen:custom-prompt-presets-v1";
 
 export type CustomPromptPreset = {
   id: string;
@@ -42,7 +45,13 @@ export const BUILTIN_PROMPT_PRESETS: { id: string; title: string; prompt: string
 export const PRESET_PREF_DEFAULT = "pref:default";
 
 export async function loadCustomPresets(): Promise<CustomPromptPreset[]> {
-  const raw = await LocalStorage.getItem<string>(CUSTOM_PRESETS_KEY);
+  let raw = await LocalStorage.getItem<string>(CUSTOM_PRESETS_KEY);
+  if (!raw?.trim()) {
+    raw = await LocalStorage.getItem<string>(LEGACY_CUSTOM_PRESETS_KEY);
+    if (raw?.trim()) {
+      await LocalStorage.setItem(CUSTOM_PRESETS_KEY, raw);
+    }
+  }
   if (!raw?.trim()) {
     return [];
   }

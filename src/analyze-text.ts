@@ -1,3 +1,4 @@
+import { EXTENSION_DISPLAY_NAME } from "./extension-brand";
 import { analyzeTextWithAnthropic } from "./anthropic-vision";
 import type { BrowserTabInfo } from "./browser-tab";
 import { analyzeTextWithGemini } from "./gemini-vision";
@@ -32,7 +33,7 @@ export async function analyzeWebPageText(
   if (provider === "openai") {
     const key = prefs.openaiApiKey?.trim();
     if (!key) {
-      throw new Error("Add your OpenAI API key in Screen AI extension preferences.");
+      throw new Error(`Add your OpenAI API key in ${EXTENSION_DISPLAY_NAME} preferences.`);
     }
     return analyzeTextWithOpenAI(key, modelId, userMessage);
   }
@@ -40,14 +41,14 @@ export async function analyzeWebPageText(
   if (provider === "anthropic") {
     const key = prefs.anthropicApiKey?.trim();
     if (!key) {
-      throw new Error("Add your Anthropic API key in Screen AI extension preferences.");
+      throw new Error(`Add your Anthropic API key in ${EXTENSION_DISPLAY_NAME} preferences.`);
     }
     return analyzeTextWithAnthropic(key, modelId, userMessage);
   }
 
   const key = prefs.geminiApiKey?.trim();
   if (!key) {
-    throw new Error("Add your Google Gemini API key in Screen AI extension preferences.");
+    throw new Error(`Add your Google Gemini API key in ${EXTENSION_DISPLAY_NAME} preferences.`);
   }
   return analyzeTextWithGemini(key, modelId, userMessage);
 }

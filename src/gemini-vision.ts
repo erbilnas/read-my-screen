@@ -1,3 +1,4 @@
+import { EXTENSION_DISPLAY_NAME } from "./extension-brand";
 import type { ModelResponse, TokenUsage } from "./token-usage";
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
@@ -100,10 +101,10 @@ export async function analyzeTextWithGemini(
 
 function formatGeminiHttpError(status: number, message: string): string {
   if (status === 400 && message.toLowerCase().includes("api key")) {
-    return "Invalid Google AI API key. Check Screen AI → Google Gemini API key in preferences.";
+    return `Invalid Google AI API key. Check ${EXTENSION_DISPLAY_NAME} → Google Gemini API key in preferences.`;
   }
   if (status === 401 || status === 403) {
-    return "Invalid or forbidden Google AI API key. Check Screen AI → Google Gemini API key in preferences.";
+    return `Invalid or forbidden Google AI API key. Check ${EXTENSION_DISPLAY_NAME} → Google Gemini API key in preferences.`;
   }
   if (status === 429) {
     return "Rate limited by Google. Try again in a moment.";

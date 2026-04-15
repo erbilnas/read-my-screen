@@ -45,6 +45,7 @@ import {
 } from "./stored-sessions";
 import { formatUsageHint, type TokenUsage } from "./token-usage";
 import { ReplyForm, SessionModelForm } from "./chat-forms";
+import { EXTENSION_DISPLAY_NAME } from "./extension-brand";
 
 type ContentSource = "screen" | "browser";
 
@@ -363,7 +364,7 @@ export default function AnalyzeScreenCommand() {
         base64 = img.base64;
         mediaType = img.mediaType;
       } else {
-        outPath = join(environment.supportPath, `screen-ai-${Date.now()}.png`);
+        outPath = join(environment.supportPath, `read-my-screen-${Date.now()}.png`);
         loading.title = "Capturing screenshot…";
         await captureToFile(values.mode, outPath);
         base64 = readFileSync(outPath, { encoding: "base64" });
@@ -499,7 +500,7 @@ export default function AnalyzeScreenCommand() {
 
     return (
       <List
-        navigationTitle="Screen AI"
+        navigationTitle={EXTENSION_DISPLAY_NAME}
         searchBarPlaceholder="Search in this chat"
         isShowingDetail
         selectedItemId={`msg-${lastIdx}`}
@@ -623,7 +624,7 @@ export default function AnalyzeScreenCommand() {
         </ActionPanel>
       }
     >
-      <Form.Description text="Set API keys for the model provider in extension preferences. Screen capture needs Screen Recording for Raycast." />
+      <Form.Description text="Set API keys for the model provider in Read My Screen preferences. Screen capture needs Screen Recording permission for Raycast." />
       <Form.Dropdown
         id="modelForRun"
         title="Model"

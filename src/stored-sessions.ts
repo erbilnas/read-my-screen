@@ -5,7 +5,10 @@ import { join } from "node:path";
 import type { ChatTurn } from "./continue-chat";
 import { fileExtensionForMediaType } from "./clipboard-image";
 
-const SESSIONS_KEY = "screen-ai:sessions-v1";
+/** Previous key; data is migrated on read. */
+const LEGACY_SESSIONS_KEY = "screen-ai:sessions-v1";
+
+const SESSIONS_KEY = "read-my-screen:sessions-v1";
 const MAX_SESSIONS = 20;
 
 function shortPreview(text: string, max: number): string {
@@ -41,7 +44,13 @@ function historyImageDir(): string {
 }
 
 export async function loadStoredSessions(): Promise<StoredSession[]> {
-  const raw = await LocalStorage.getItem<string>(SESSIONS_KEY);
+  let raw = await LocalStorage.getItem<string>(SESSIONS_KEY);
+  if (!raw?.trim()) {
+    raw = await LocalStorage.getItem<string>(LEGACY_SESSIONS_KEY);
+    if (raw?.trim()) {
+      await LocalStorage.setItem(SESSIONS_KEY, raw);
+    }
+  }
   if (!raw?.trim()) {
     return [];
   }
