@@ -10,8 +10,9 @@ type GenerateContentResponse = {
 export async function analyzeImageWithGemini(
   apiKey: string,
   model: string,
-  base64Png: string,
+  base64Image: string,
   userPrompt: string,
+  imageMediaType = "image/png",
 ): Promise<string> {
   const url = `${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
@@ -22,7 +23,7 @@ export async function analyzeImageWithGemini(
       contents: [
         {
           role: "user",
-          parts: [{ text: userPrompt }, { inlineData: { mimeType: "image/png", data: base64Png } }],
+          parts: [{ text: userPrompt }, { inlineData: { mimeType: imageMediaType, data: base64Image } }],
         },
       ],
     }),

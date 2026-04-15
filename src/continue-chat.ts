@@ -11,7 +11,9 @@ export type ChatTurn = {
   content: string;
 };
 
-export type SessionContext = { source: "screen"; screenBase64: string } | { source: "browser" };
+export type SessionContext =
+  | { source: "screen"; screenBase64: string; screenMediaType?: string }
+  | { source: "browser" };
 
 type AnthropicResponse = {
   content?: Array<{ type: string; text?: string }>;
@@ -63,6 +65,11 @@ export async function continueConversation(
   return chatWithHistoryGemini(key, modelId, session, messages);
 }
 
+function screenDataUrl(session: { screenBase64: string; screenMediaType?: string }): string {
+  const mime = session.screenMediaType?.trim() || "image/png";
+  return `data:${mime};base64,${session.screenBase64}`;
+}
+
 function buildOpenAIMessages(session: SessionContext, messages: ChatTurn[]): ChatCompletionMessageParam[] {
   const out: ChatCompletionMessageParam[] = [];
 
@@ -75,7 +82,7 @@ function buildOpenAIMessages(session: SessionContext, messages: ChatTurn[]): Cha
         {
           type: "image_url",
           image_url: {
-            url: `data:image/png;base64,${session.screenBase64}`,
+            url: screenDataUrl(session),
             detail: "auto",
           },
         },
@@ -93,6 +100,18 @@ function buildOpenAIMessages(session: SessionContext, messages: ChatTurn[]): Cha
   return out;
 }
 
+function anthropicScreenMediaType(m: string | undefined): "image/png" | "image/jpeg" | "image/gif" | "image/webp" {
+  switch (m) {
+    case "image/jpeg":
+    case "image/gif":
+    case "image/webp":
+    case "image/png":
+      return m;
+    default:
+      return "image/png";
+  }
+}
+
 function buildAnthropicMessages(session: SessionContext, messages: ChatTurn[]): unknown[] {
   if (session.source === "screen") {
     const [first, ...rest] = messages;
@@ -104,7 +123,7 @@ function buildAnthropicMessages(session: SessionContext, messages: ChatTurn[]): 
             type: "image",
             source: {
               type: "base64",
-              media_type: "image/png",
+              media_type: anthropicScreenMediaType(session.screenMediaType),
               data: session.screenBase64,
             },
           },
@@ -168,10 +187,11 @@ async function chatWithHistoryAnthropic(
 function buildGeminiContents(session: SessionContext, messages: ChatTurn[]): unknown[] {
   if (session.source === "screen") {
     const [first, ...rest] = messages;
+    const mimeType = session.screenMediaType?.trim() || "image/png";
     const contents: unknown[] = [
       {
         role: "user",
-        parts: [{ text: first.content }, { inlineData: { mimeType: "image/png", data: session.screenBase64 } }],
+        parts: [{ text: first.content }, { inlineData: { mimeType, data: session.screenBase64 } }],
       },
     ];
     for (const m of rest) {

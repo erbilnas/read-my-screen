@@ -4,8 +4,9 @@ import type { ChatCompletionMessageParam } from "openai/resources/chat/completio
 export async function analyzeImageWithOpenAI(
   apiKey: string,
   model: string,
-  base64Png: string,
+  base64Image: string,
   userPrompt: string,
+  imageMediaType = "image/png",
 ): Promise<string> {
   const client = new OpenAI({ apiKey });
 
@@ -19,7 +20,7 @@ export async function analyzeImageWithOpenAI(
           {
             type: "image_url",
             image_url: {
-              url: `data:image/png;base64,${base64Png}`,
+              url: `data:${imageMediaType};base64,${base64Image}`,
               detail: "auto",
             },
           },

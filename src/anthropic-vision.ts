@@ -9,8 +9,9 @@ type MessagesResponse = {
 export async function analyzeImageWithAnthropic(
   apiKey: string,
   model: string,
-  base64Png: string,
+  base64Image: string,
   userPrompt: string,
+  imageMediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" = "image/png",
 ): Promise<string> {
   const res = await fetch(ANTHROPIC_API, {
     method: "POST",
@@ -30,8 +31,8 @@ export async function analyzeImageWithAnthropic(
               type: "image",
               source: {
                 type: "base64",
-                media_type: "image/png",
-                data: base64Png,
+                media_type: imageMediaType,
+                data: base64Image,
               },
             },
             { type: "text", text: userPrompt },
