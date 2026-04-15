@@ -17,7 +17,9 @@ type ExtensionPreferences = {
   /** Model - Provider and model (vision for screenshots, text for browser pages). Use the matching API key. */
   "model": "openai:gpt-4o-mini" | "openai:gpt-4o" | "openai:gpt-4.1-mini" | "openai:gpt-4.1" | "anthropic:claude-sonnet-4-20250514" | "anthropic:claude-haiku-4-5-20251001" | "gemini:gemini-2.5-flash" | "gemini:gemini-2.5-pro" | "gemini:gemini-2.0-flash",
   /** Default instructions - Pre-filled analysis instructions in the form (you can edit each run). */
-  "defaultPrompt": string
+  "defaultPrompt": string,
+  /** Token usage - When the provider returns usage data, show estimated input/output tokens in toasts and the chat header. */
+  "showTokenUsage": boolean
 }
 
 /** Preferences accessible in all the extension's commands */
@@ -26,10 +28,14 @@ declare type Preferences = ExtensionPreferences
 declare namespace Preferences {
   /** Preferences accessible in the `analyze-screen` command */
   export type AnalyzeScreen = ExtensionPreferences & {}
+  /** Preferences accessible in the `quick-clipboard` command */
+  export type QuickClipboard = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
   /** Arguments passed to the `analyze-screen` command */
   export type AnalyzeScreen = {}
+  /** Arguments passed to the `quick-clipboard` command */
+  export type QuickClipboard = {}
 }
 

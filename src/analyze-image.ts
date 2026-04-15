@@ -1,6 +1,7 @@
 import { analyzeImageWithAnthropic } from "./anthropic-vision";
 import { analyzeImageWithGemini } from "./gemini-vision";
 import type { ParsedModel } from "./model";
+import type { ModelResponse } from "./token-usage";
 import { analyzeImageWithOpenAI, formatOpenAIError } from "./openai-vision";
 
 function anthropicImageMediaType(m: string): "image/png" | "image/jpeg" | "image/gif" | "image/webp" {
@@ -21,7 +22,7 @@ export async function analyzeImage(
   base64Image: string,
   userPrompt: string,
   imageMediaType = "image/png",
-): Promise<string> {
+): Promise<ModelResponse> {
   const { provider, modelId } = parsed;
 
   if (provider === "openai") {

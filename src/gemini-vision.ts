@@ -1,11 +1,35 @@
+import type { ModelResponse, TokenUsage } from "./token-usage";
+
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 type GenerateContentResponse = {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string }> };
   }>;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
   error?: { message?: string; code?: number };
 };
+
+function usageFromGemini(u: GenerateContentResponse["usageMetadata"]): TokenUsage | undefined {
+  if (!u) {
+    return undefined;
+  }
+  const input = u.promptTokenCount;
+  const output = u.candidatesTokenCount;
+  const total = u.totalTokenCount;
+  if (input == null && output == null && total == null) {
+    return undefined;
+  }
+  return {
+    input,
+    output,
+    total,
+  };
+}
 
 export async function analyzeImageWithGemini(
   apiKey: string,
@@ -13,7 +37,7 @@ export async function analyzeImageWithGemini(
   base64Image: string,
   userPrompt: string,
   imageMediaType = "image/png",
-): Promise<string> {
+): Promise<ModelResponse> {
   const url = `${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const res = await fetch(url, {
@@ -41,10 +65,14 @@ export async function analyzeImageWithGemini(
   if (!trimmed) {
     throw new Error("The model returned an empty response.");
   }
-  return trimmed;
+  return { text: trimmed, usage: usageFromGemini(data.usageMetadata) };
 }
 
-export async function analyzeTextWithGemini(apiKey: string, model: string, userMessage: string): Promise<string> {
+export async function analyzeTextWithGemini(
+  apiKey: string,
+  model: string,
+  userMessage: string,
+): Promise<ModelResponse> {
   const url = `${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const res = await fetch(url, {
@@ -67,7 +95,7 @@ export async function analyzeTextWithGemini(apiKey: string, model: string, userM
   if (!trimmed) {
     throw new Error("The model returned an empty response.");
   }
-  return trimmed;
+  return { text: trimmed, usage: usageFromGemini(data.usageMetadata) };
 }
 
 function formatGeminiHttpError(status: number, message: string): string {

@@ -1,5 +1,21 @@
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import type { ModelResponse, TokenUsage } from "./token-usage";
+
+function usageFromOpenAIUsage(u: {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+}): TokenUsage | undefined {
+  if (!u || (u.prompt_tokens == null && u.completion_tokens == null && u.total_tokens == null)) {
+    return undefined;
+  }
+  return {
+    input: u.prompt_tokens,
+    output: u.completion_tokens,
+    total: u.total_tokens,
+  };
+}
 
 export async function analyzeImageWithOpenAI(
   apiKey: string,
@@ -7,7 +23,7 @@ export async function analyzeImageWithOpenAI(
   base64Image: string,
   userPrompt: string,
   imageMediaType = "image/png",
-): Promise<string> {
+): Promise<ModelResponse> {
   const client = new OpenAI({ apiKey });
 
   const response = await client.chat.completions.create({
@@ -34,14 +50,14 @@ export async function analyzeImageWithOpenAI(
   if (!text || !text.trim()) {
     throw new Error("The model returned an empty response.");
   }
-  return text.trim();
+  return { text: text.trim(), usage: usageFromOpenAIUsage(response.usage ?? undefined) };
 }
 
 export async function chatWithHistoryOpenAI(
   apiKey: string,
   model: string,
   messages: ChatCompletionMessageParam[],
-): Promise<string> {
+): Promise<ModelResponse> {
   const client = new OpenAI({ apiKey });
 
   const response = await client.chat.completions.create({
@@ -54,10 +70,14 @@ export async function chatWithHistoryOpenAI(
   if (!text || !text.trim()) {
     throw new Error("The model returned an empty response.");
   }
-  return text.trim();
+  return { text: text.trim(), usage: usageFromOpenAIUsage(response.usage ?? undefined) };
 }
 
-export async function analyzeTextWithOpenAI(apiKey: string, model: string, userMessage: string): Promise<string> {
+export async function analyzeTextWithOpenAI(
+  apiKey: string,
+  model: string,
+  userMessage: string,
+): Promise<ModelResponse> {
   const client = new OpenAI({ apiKey });
 
   const response = await client.chat.completions.create({
@@ -70,7 +90,7 @@ export async function analyzeTextWithOpenAI(apiKey: string, model: string, userM
   if (!text || !text.trim()) {
     throw new Error("The model returned an empty response.");
   }
-  return text.trim();
+  return { text: text.trim(), usage: usageFromOpenAIUsage(response.usage ?? undefined) };
 }
 
 export function formatOpenAIError(err: unknown): string {

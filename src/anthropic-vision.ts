@@ -1,10 +1,20 @@
+import type { ModelResponse, TokenUsage } from "./token-usage";
+
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 
 type MessagesResponse = {
   content?: Array<{ type: string; text?: string }>;
   error?: { message?: string };
+  usage?: { input_tokens?: number; output_tokens?: number };
 };
+
+function usageFromAnthropic(u: MessagesResponse["usage"]): TokenUsage | undefined {
+  if (!u || (u.input_tokens == null && u.output_tokens == null)) {
+    return undefined;
+  }
+  return { input: u.input_tokens, output: u.output_tokens };
+}
 
 export async function analyzeImageWithAnthropic(
   apiKey: string,
@@ -12,7 +22,7 @@ export async function analyzeImageWithAnthropic(
   base64Image: string,
   userPrompt: string,
   imageMediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" = "image/png",
-): Promise<string> {
+): Promise<ModelResponse> {
   const res = await fetch(ANTHROPIC_API, {
     method: "POST",
     headers: {
@@ -58,10 +68,14 @@ export async function analyzeImageWithAnthropic(
   if (!trimmed) {
     throw new Error("The model returned an empty response.");
   }
-  return trimmed;
+  return { text: trimmed, usage: usageFromAnthropic(data.usage) };
 }
 
-export async function analyzeTextWithAnthropic(apiKey: string, model: string, userMessage: string): Promise<string> {
+export async function analyzeTextWithAnthropic(
+  apiKey: string,
+  model: string,
+  userMessage: string,
+): Promise<ModelResponse> {
   const res = await fetch(ANTHROPIC_API, {
     method: "POST",
     headers: {
@@ -92,7 +106,7 @@ export async function analyzeTextWithAnthropic(apiKey: string, model: string, us
   if (!trimmed) {
     throw new Error("The model returned an empty response.");
   }
-  return trimmed;
+  return { text: trimmed, usage: usageFromAnthropic(data.usage) };
 }
 
 function formatAnthropicHttpError(status: number, message: string): string {

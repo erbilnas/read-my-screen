@@ -35,10 +35,12 @@ import {
   appendStoredSession,
   chatToMarkdown,
   deleteStoredSession,
+  historyListPreview,
   loadStoredSessions,
   readSessionImageFile,
   type StoredSession,
 } from "./session-history";
+import { formatUsageHint, type TokenUsage } from "./token-usage";
 
 type ContentSource = "screen" | "browser";
 
@@ -138,6 +140,8 @@ export default function AnalyzeScreenCommand() {
   const [presetSelection, setPresetSelection] = useState(PRESET_PREF_DEFAULT);
   const [customPresets, setCustomPresets] = useState<CustomPromptPreset[]>([]);
   const [historySessions, setHistorySessions] = useState<StoredSession[]>([]);
+  const [lastRequestUsage, setLastRequestUsage] = useState<TokenUsage | null>(null);
+  const showTokenUsagePref = prefs.showTokenUsage === true;
 
   useEffect(() => {
     void loadCustomPresets().then(setCustomPresets);
@@ -161,6 +165,7 @@ export default function AnalyzeScreenCommand() {
     setPhase("setup");
     setPromptText(defaultPrompt);
     setPresetSelection(PRESET_PREF_DEFAULT);
+    setLastRequestUsage(null);
     setFormKey((k) => k + 1);
   }, [defaultPrompt]);
 
@@ -181,14 +186,15 @@ export default function AnalyzeScreenCommand() {
       });
 
       try {
-        const reply = await continueConversation(prefs, parsed, session, thread);
+        const { text: reply, usage } = await continueConversation(prefs, parsed, session, thread);
         setMessages([...thread, { role: "assistant", content: reply }]);
+        setLastRequestUsage(usage ?? null);
         await Clipboard.copy(reply);
         loading.hide();
         await showToast({
           style: Toast.Style.Success,
           title: "Reply ready",
-          message: "Copied to clipboard.",
+          message: `Copied to clipboard.${formatUsageHint(usage, showTokenUsagePref)}`,
         });
       } catch (err) {
         loading.hide();
@@ -199,7 +205,7 @@ export default function AnalyzeScreenCommand() {
         });
       }
     },
-    [messages, prefs, session],
+    [messages, prefs, session, showTokenUsagePref],
   );
 
   const openReply = useCallback(() => {
@@ -223,6 +229,7 @@ export default function AnalyzeScreenCommand() {
   }, [messages]);
 
   const restoreFromHistory = useCallback((record: StoredSession) => {
+    setLastRequestUsage(null);
     if (record.source === "browser") {
       setMessages(record.messages);
       setSession({ source: "browser" });
@@ -272,7 +279,7 @@ export default function AnalyzeScreenCommand() {
         loading.title = "Loading page…";
         const pageText = await fetchPageAsPlainText(tab.url);
         loading.title = analyzingLabel(parsed);
-        const answer = await analyzeWebPageText(prefs, parsed, prompt, tab, pageText);
+        const { text: answer, usage } = await analyzeWebPageText(prefs, parsed, prompt, tab, pageText);
         const userDisplay = buildWebPageUserMessage(prompt, tab, pageText);
         const thread: ChatTurn[] = [
           { role: "user", content: userDisplay },
@@ -280,6 +287,7 @@ export default function AnalyzeScreenCommand() {
         ];
         setMessages(thread);
         setSession({ source: "browser" });
+        setLastRequestUsage(usage ?? null);
         setPhase("chat");
         loading.hide();
         await Clipboard.copy(answer);
@@ -293,7 +301,7 @@ export default function AnalyzeScreenCommand() {
         await showToast({
           style: Toast.Style.Success,
           title: "Response ready",
-          message: "Copied to clipboard. Use Continue chat for follow-ups.",
+          message: `Copied to clipboard. Use Continue chat for follow-ups.${formatUsageHint(usage, showTokenUsagePref)}`,
         });
         return;
       }
@@ -314,7 +322,7 @@ export default function AnalyzeScreenCommand() {
       }
 
       loading.title = analyzingLabel(parsed);
-      const answer = await analyzeImage(prefs, parsed, base64, prompt, mediaType);
+      const { text: answer, usage } = await analyzeImage(prefs, parsed, base64, prompt, mediaType);
 
       const thread: ChatTurn[] = [
         { role: "user", content: prompt },
@@ -322,6 +330,7 @@ export default function AnalyzeScreenCommand() {
       ];
       setMessages(thread);
       setSession({ source: "screen", screenBase64: base64, screenMediaType: mediaType });
+      setLastRequestUsage(usage ?? null);
       setPhase("chat");
       loading.hide();
       await Clipboard.copy(answer);
@@ -337,7 +346,7 @@ export default function AnalyzeScreenCommand() {
       await showToast({
         style: Toast.Style.Success,
         title: "Response ready",
-        message: "Copied to clipboard. Use Continue chat for follow-ups.",
+        message: `Copied to clipboard. Use Continue chat for follow-ups.${formatUsageHint(usage, showTokenUsagePref)}`,
       });
     } catch (err) {
       loading.hide();
@@ -409,8 +418,11 @@ export default function AnalyzeScreenCommand() {
               id={s.id}
               icon={s.source === "browser" ? Icon.Globe : Icon.Image}
               title={s.title}
-              subtitle={new Date(s.createdAt).toLocaleString()}
-              accessories={[{ text: s.source === "browser" ? "Browser" : "Screen" }]}
+              subtitle={historyListPreview(s)}
+              accessories={[
+                { text: new Date(s.createdAt).toLocaleString() },
+                { text: s.source === "browser" ? "Browser" : "Screen" },
+              ]}
               actions={
                 <ActionPanel>
                   <Action title="Open" icon={Icon.ArrowRight} onAction={() => restoreFromHistory(s)} />
@@ -459,7 +471,10 @@ export default function AnalyzeScreenCommand() {
           </ActionPanel>
         }
       >
-        <List.Section title="Conversation" subtitle={`${messages.length} messages`}>
+        <List.Section
+          title="Conversation"
+          subtitle={`${messages.length} messages${formatUsageHint(lastRequestUsage ?? undefined, showTokenUsagePref)}`}
+        >
           {messages.map((m, i) => (
             <List.Item
               key={`msg-${i}`}

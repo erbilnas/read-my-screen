@@ -16,6 +16,13 @@
       "title": "Analyze Screen",
       "description": "Analyze a screen capture or the current browser page with AI",
       "mode": "view"
+    },
+    {
+      "name": "quick-clipboard",
+      "title": "Quick Analyze Clipboard Image",
+      "subtitle": "Screen AI",
+      "description": "Analyze a file-backed image on the clipboard with your default model and instructions",
+      "mode": "no-view"
     }
   ],
   "preferences": [
@@ -66,6 +73,15 @@
       "type": "textfield",
       "required": false,
       "default": "Describe what you see on the screen. Call out any text, UI elements, errors, or notable details."
+    },
+    {
+      "name": "showTokenUsage",
+      "title": "Token usage",
+      "description": "When the provider returns usage data, show estimated input/output tokens in toasts and the chat header.",
+      "type": "checkbox",
+      "required": false,
+      "default": false,
+      "label": "Show estimated token usage"
     }
   ],
   "dependencies": {

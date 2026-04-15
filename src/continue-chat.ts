@@ -1,6 +1,7 @@
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { chatWithHistoryOpenAI } from "./openai-vision";
 import type { ParsedModel } from "./model";
+import type { ModelResponse } from "./token-usage";
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
@@ -18,12 +19,18 @@ export type SessionContext =
 type AnthropicResponse = {
   content?: Array<{ type: string; text?: string }>;
   error?: { message?: string };
+  usage?: { input_tokens?: number; output_tokens?: number };
 };
 
 type GeminiResponse = {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string }> };
   }>;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
   error?: { message?: string; code?: number };
 };
 
@@ -35,7 +42,7 @@ export async function continueConversation(
   parsed: ParsedModel,
   session: SessionContext,
   messages: ChatTurn[],
-): Promise<string> {
+): Promise<ModelResponse> {
   if (messages.length < 1 || messages[messages.length - 1].role !== "user") {
     throw new Error("Invalid conversation state.");
   }
@@ -153,7 +160,7 @@ async function chatWithHistoryAnthropic(
   model: string,
   session: SessionContext,
   messages: ChatTurn[],
-): Promise<string> {
+): Promise<ModelResponse> {
   const res = await fetch(ANTHROPIC_API, {
     method: "POST",
     headers: {
@@ -181,7 +188,11 @@ async function chatWithHistoryAnthropic(
   if (!trimmed) {
     throw new Error("The model returned an empty response.");
   }
-  return trimmed;
+  const usage =
+    data.usage?.input_tokens != null || data.usage?.output_tokens != null
+      ? { input: data.usage?.input_tokens, output: data.usage?.output_tokens }
+      : undefined;
+  return { text: trimmed, usage };
 }
 
 function buildGeminiContents(session: SessionContext, messages: ChatTurn[]): unknown[] {
@@ -212,7 +223,7 @@ async function chatWithHistoryGemini(
   model: string,
   session: SessionContext,
   messages: ChatTurn[],
-): Promise<string> {
+): Promise<ModelResponse> {
   const url = `${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const res = await fetch(url, {
@@ -232,5 +243,14 @@ async function chatWithHistoryGemini(
   if (!trimmed) {
     throw new Error("The model returned an empty response.");
   }
-  return trimmed;
+  const um = data.usageMetadata;
+  const usage =
+    um && (um.promptTokenCount != null || um.candidatesTokenCount != null || um.totalTokenCount != null)
+      ? {
+          input: um.promptTokenCount,
+          output: um.candidatesTokenCount,
+          total: um.totalTokenCount,
+        }
+      : undefined;
+  return { text: trimmed, usage };
 }

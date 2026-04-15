@@ -8,10 +8,23 @@ import { fileExtensionForMediaType } from "./clipboard-image";
 const SESSIONS_KEY = "screen-ai:sessions-v1";
 const MAX_SESSIONS = 20;
 
+function shortPreview(text: string, max: number): string {
+  const t = text.trim().replace(/\s+/g, " ");
+  return t.length <= max ? t : `${t.slice(0, max)}…`;
+}
+
+function previewFromMessages(messages: ChatTurn[]): string {
+  const assistant = messages.find((m) => m.role === "assistant");
+  return shortPreview(assistant?.content ?? "", 120);
+}
+
 export type StoredSession = {
   id: string;
   createdAt: number;
+  /** Short label (often derived from the user prompt). */
   title: string;
+  /** Short assistant reply preview for the history list. */
+  preview?: string;
   source: "browser" | "screen";
   messages: ChatTurn[];
   /** Relative to {@link historyImageDir} */
@@ -45,7 +58,8 @@ export async function loadStoredSessions(): Promise<StoredSession[]> {
         typeof (s as StoredSession).createdAt === "number" &&
         typeof (s as StoredSession).title === "string" &&
         ((s as StoredSession).source === "browser" || (s as StoredSession).source === "screen") &&
-        Array.isArray((s as StoredSession).messages),
+        Array.isArray((s as StoredSession).messages) &&
+        ((s as StoredSession).preview === undefined || typeof (s as StoredSession).preview === "string"),
     );
   } catch {
     return [];
@@ -96,6 +110,7 @@ export async function appendStoredSession(input: AppendSessionInput): Promise<vo
     id,
     createdAt: Date.now(),
     title: input.title,
+    preview: previewFromMessages(input.messages),
     source: input.source,
     messages: input.messages,
     imageFileName,
@@ -122,6 +137,10 @@ export function readSessionImageFile(record: StoredSession): { base64: string; m
   const buf = readFileSync(full);
   const mediaType = record.screenMediaType?.trim() || "image/png";
   return { base64: buf.toString("base64"), mediaType };
+}
+
+export function historyListPreview(record: StoredSession): string {
+  return record.preview?.trim() || previewFromMessages(record.messages);
 }
 
 export async function deleteStoredSession(id: string): Promise<void> {
