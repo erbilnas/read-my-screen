@@ -2,10 +2,8 @@ import {
   Action,
   ActionPanel,
   Clipboard,
-  Color,
   Form,
   Icon,
-  List,
   Toast,
   environment,
   getPreferenceValues,
@@ -14,7 +12,6 @@ import {
 } from "@raycast/api";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { useCallback, useEffect, useState } from "react";
 import { analyzeImage, formatVisionError } from "./analyze-image";
 import { analyzeWebPageText, buildWebPageUserMessage } from "./analyze-text";
@@ -23,7 +20,7 @@ import { ClipboardImageError, readImageFromClipboard } from "./clipboard-image";
 import { CaptureError, CaptureMode, captureToFile, safeUnlink } from "./capture";
 import { type ChatTurn, continueConversation, type SessionContext } from "./continue-chat";
 import { FetchPageError, fetchPageAsPlainText } from "./fetch-page-text";
-import { effectiveModelPreference, MODEL_PREFERENCE_OPTIONS, modelTitleForValue, parseModelPreference } from "./model";
+import { effectiveModelPreference, MODEL_PREFERENCE_OPTIONS, parseModelPreference } from "./model";
 import { regenerateLastTurn } from "./regenerate-turn";
 import {
   BUILTIN_PROMPT_PRESETS,
@@ -37,15 +34,16 @@ import {
   appendStoredSession,
   chatToMarkdown,
   deleteStoredSession,
-  getSessionScreenImagePath,
-  historyListPreview,
   loadStoredSessions,
   readSessionImageFile,
   type StoredSession,
 } from "./stored-sessions";
 import { formatUsageHint, type TokenUsage } from "./token-usage";
-import { ReplyForm, SessionModelForm } from "./chat-forms";
+import { ReplyForm, SavePresetForm, SessionModelForm } from "./chat-forms";
 import { EXTENSION_DISPLAY_NAME } from "./extension-brand";
+import { ChatThreadList } from "./ui/chat-thread-list";
+import { HistorySessionsList } from "./ui/history-session-list";
+import { previewText } from "./ui/markdown";
 
 type ContentSource = "screen" | "browser";
 
@@ -66,54 +64,6 @@ function analyzingLabel(parsed: ReturnType<typeof parseModelPreference>): string
     default:
       return "Analyzing…";
   }
-}
-
-function previewText(text: string, max = 120): string {
-  const t = text.trim().replace(/\s+/g, " ");
-  return t.length <= max ? t : `${t.slice(0, max)}…`;
-}
-
-function historyDetailMarkdown(s: StoredSession): string {
-  const imgPath = getSessionScreenImagePath(s);
-  const preview = historyListPreview(s);
-  if (imgPath) {
-    return `![Captured screen](${pathToFileURL(imgPath).href})\n\n_${preview}_`;
-  }
-  return preview;
-}
-
-/** Renders arbitrary text safely as markdown (fenced block). */
-function userInstructionsMarkdown(body: string): string {
-  const fence = body.includes("```") ? "````" : "```";
-  return `### Message\n\n${fence}\n${body}\n${fence}`;
-}
-
-type SavePresetFormValues = { title: string };
-
-function SavePresetForm({
-  promptToSave,
-  onSave,
-}: {
-  promptToSave: string;
-  onSave: (title: string, prompt: string) => void;
-}) {
-  return (
-    <Form
-      actions={
-        <ActionPanel>
-          <Action.SubmitForm
-            title="Save Preset"
-            icon={Icon.Plus}
-            onSubmit={(values: SavePresetFormValues) => {
-              onSave(values.title ?? "", promptToSave);
-            }}
-          />
-        </ActionPanel>
-      }
-    >
-      <Form.TextField id="title" title="Preset name" placeholder="e.g. Ticket description" />
-    </Form>
-  );
 }
 
 export default function AnalyzeScreenCommand() {
@@ -452,127 +402,34 @@ export default function AnalyzeScreenCommand() {
 
   if (phase === "history") {
     return (
-      <List
-        navigationTitle="Session history"
-        searchBarPlaceholder="Search sessions"
-        isShowingDetail
-        actions={
+      <HistorySessionsList
+        sessions={historySessions}
+        onRestore={restoreFromHistory}
+        onDelete={handleDeleteHistory}
+        headerActions={
           <ActionPanel>
             <Action title="Back" icon={Icon.ArrowLeft} onAction={() => setPhase("setup")} />
           </ActionPanel>
         }
-      >
-        <List.Section title="Recent" subtitle={`${historySessions.length} saved`}>
-          {historySessions.map((s) => (
-            <List.Item
-              key={s.id}
-              id={s.id}
-              icon={s.source === "browser" ? Icon.Globe : Icon.Image}
-              title={s.title}
-              subtitle={historyListPreview(s)}
-              detail={<List.Item.Detail markdown={historyDetailMarkdown(s)} />}
-              accessories={[
-                { text: new Date(s.createdAt).toLocaleString() },
-                { text: s.source === "browser" ? "Browser" : "Screen" },
-              ]}
-              actions={
-                <ActionPanel>
-                  <Action title="Open" icon={Icon.ArrowRight} onAction={() => restoreFromHistory(s)} />
-                  <Action
-                    title="Delete"
-                    icon={Icon.Trash}
-                    style={Action.Style.Destructive}
-                    onAction={() => void handleDeleteHistory(s.id)}
-                  />
-                  <Action title="Back" icon={Icon.ArrowLeft} onAction={() => setPhase("setup")} />
-                </ActionPanel>
-              }
-            />
-          ))}
-        </List.Section>
-      </List>
+        onBackFromHistory={() => setPhase("setup")}
+      />
     );
   }
 
   if (phase === "chat" && messages.length > 0 && session) {
-    const lastIdx = messages.length - 1;
-    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
-
     return (
-      <List
+      <ChatThreadList
         navigationTitle={EXTENSION_DISPLAY_NAME}
-        searchBarPlaceholder="Search in this chat"
-        isShowingDetail
-        selectedItemId={`msg-${lastIdx}`}
-        actions={
-          <ActionPanel>
-            <Action
-              title="Continue Chat"
-              icon={Icon.Message}
-              shortcut={{ modifiers: ["cmd"], key: "n" }}
-              onAction={openReply}
-            />
-            <Action
-              title="Copy Conversation as Markdown"
-              icon={Icon.Document}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
-              onAction={() => void copyConversationMarkdown()}
-            />
-            <Action title="New Analysis" icon={Icon.Rewind} onAction={startOver} />
-            <Action
-              title="Regenerate Last Reply"
-              icon={Icon.ArrowClockwise}
-              shortcut={{ modifiers: ["cmd"], key: "r" }}
-              onAction={() => void runRegenerate()}
-            />
-            <Action title="Change Model for This Chat" icon={Icon.Gear} onAction={openSessionModelPicker} />
-            {lastAssistant ? <Action.CopyToClipboard title="Copy Last Reply" content={lastAssistant.content} /> : null}
-          </ActionPanel>
-        }
-      >
-        <List.Section
-          title="Conversation"
-          subtitle={`${modelTitleForValue(effectiveSessionModel)} · ${messages.length} messages${formatUsageHint(lastRequestUsage ?? undefined, showTokenUsagePref)}`}
-        >
-          {messages.map((m, i) => (
-            <List.Item
-              key={`msg-${i}`}
-              id={`msg-${i}`}
-              icon={
-                m.role === "user"
-                  ? { source: Icon.Person, tintColor: Color.Blue }
-                  : { source: Icon.Stars, tintColor: Color.Purple }
-              }
-              title={m.role === "user" ? "You" : "Assistant"}
-              subtitle={previewText(m.content)}
-              detail={
-                <List.Item.Detail markdown={m.role === "user" ? userInstructionsMarkdown(m.content) : m.content} />
-              }
-              actions={
-                <ActionPanel>
-                  <Action.CopyToClipboard
-                    title={m.role === "user" ? "Copy Message" : "Copy Reply"}
-                    content={m.content}
-                  />
-                  <Action title="Continue Chat" icon={Icon.Message} onAction={openReply} />
-                  <Action
-                    title="Regenerate Last Reply"
-                    icon={Icon.ArrowClockwise}
-                    onAction={() => void runRegenerate()}
-                  />
-                  <Action title="Change Model for This Chat" icon={Icon.Gear} onAction={openSessionModelPicker} />
-                  <Action
-                    title="Copy Conversation as Markdown"
-                    icon={Icon.Document}
-                    onAction={() => void copyConversationMarkdown()}
-                  />
-                  <Action title="New Analysis" icon={Icon.Rewind} onAction={startOver} />
-                </ActionPanel>
-              }
-            />
-          ))}
-        </List.Section>
-      </List>
+        messages={messages}
+        effectiveSessionModel={effectiveSessionModel}
+        lastRequestUsage={lastRequestUsage}
+        showTokenUsage={showTokenUsagePref}
+        openReply={openReply}
+        copyConversationMarkdown={copyConversationMarkdown}
+        runRegenerate={runRegenerate}
+        openSessionModelPicker={openSessionModelPicker}
+        startOver={startOver}
+      />
     );
   }
 
@@ -624,27 +481,45 @@ export default function AnalyzeScreenCommand() {
         </ActionPanel>
       }
     >
-      <Form.Description text="Set API keys for the model provider in Read My Screen preferences. Screen capture needs Screen Recording permission for Raycast." />
-      <Form.Dropdown
-        id="modelForRun"
-        title="Model"
-        value={setupModelOverride}
-        onChange={setSetupModelOverride}
-        info="Overrides the extension default model for this run only. Follow-ups and regenerate use the same model until you change it in chat."
-      >
-        <Form.Dropdown.Item value="" title="Default (from preferences)" icon={Icon.Star} />
-        {MODEL_PREFERENCE_OPTIONS.map((opt) => (
-          <Form.Dropdown.Item key={opt.value} value={opt.value} title={opt.title} />
-        ))}
-      </Form.Dropdown>
+      <Form.Description text="API keys and default model: Raycast → Extensions → Read My Screen → Preferences. Screen capture requires Screen Recording permission for Raycast." />
       <Form.Dropdown
         id="contentSource"
         title="Content source"
         defaultValue="screen"
         onChange={(v) => setContentSource(v as ContentSource)}
+        info={
+          contentSource === "browser"
+            ? "AppleScript picks the frontmost supported browser (Chrome, Safari, Arc, Dia, Brave, Edge, Opera, Vivaldi). The page is fetched as plain text—logins and SPAs may differ from what you see."
+            : "Capture from the screen or use a file-backed image from the clipboard."
+        }
       >
         <Form.Dropdown.Item value="screen" title="Screen capture" icon={Icon.Desktop} />
         <Form.Dropdown.Item value="browser" title="Current browser page" icon={Icon.Globe} />
+      </Form.Dropdown>
+      {contentSource === "screen" ? (
+        <Form.Dropdown
+          id="mode"
+          title="Capture"
+          defaultValue="interactive"
+          info="Interactive and Window modes open macOS selection UI. Clipboard uses a file-backed image from the clipboard."
+        >
+          <Form.Dropdown.Item value="interactive" title="Interactive region" icon={Icon.Crop} />
+          <Form.Dropdown.Item value="fullscreen" title="Full screen" icon={Icon.Desktop} />
+          <Form.Dropdown.Item value="window" title="Single window" icon={Icon.Window} />
+          <Form.Dropdown.Item value="clipboard" title="Clipboard image (file)" icon={Icon.Clipboard} />
+        </Form.Dropdown>
+      ) : null}
+      <Form.Dropdown
+        id="modelForRun"
+        title="Model (this run)"
+        value={setupModelOverride}
+        onChange={setSetupModelOverride}
+        info="Overrides the default from preferences for this run only. Follow-ups and regenerate use this chat’s model until you change it below the conversation."
+      >
+        <Form.Dropdown.Item value="" title="Default (from preferences)" icon={Icon.Star} />
+        {MODEL_PREFERENCE_OPTIONS.map((opt) => (
+          <Form.Dropdown.Item key={opt.value} value={opt.value} title={opt.title} />
+        ))}
       </Form.Dropdown>
       <Form.Dropdown
         id="promptPreset"
@@ -667,21 +542,6 @@ export default function AnalyzeScreenCommand() {
           <Form.Dropdown.Item key={c.id} value={`custom:${c.id}`} title={c.title} icon={Icon.StarCircle} />
         ))}
       </Form.Dropdown>
-      {contentSource === "screen" ? (
-        <Form.Dropdown
-          id="mode"
-          title="Capture"
-          defaultValue="interactive"
-          info="Interactive and Window modes open macOS selection UI. Clipboard uses a file-backed image from the clipboard."
-        >
-          <Form.Dropdown.Item value="interactive" title="Interactive region" icon={Icon.Crop} />
-          <Form.Dropdown.Item value="fullscreen" title="Full screen" icon={Icon.Desktop} />
-          <Form.Dropdown.Item value="window" title="Single window" icon={Icon.Window} />
-          <Form.Dropdown.Item value="clipboard" title="Clipboard image (file)" icon={Icon.Clipboard} />
-        </Form.Dropdown>
-      ) : (
-        <Form.Description text="Uses AppleScript to read the active tab from Chrome, Safari, Arc, Dia, Brave, Edge, Opera, or Vivaldi (first browser with an open window). The page is fetched and converted to plain text—SPA or login-only content may not match what you see on screen." />
-      )}
       <Form.TextArea
         id="prompt"
         title="Instructions for AI"
