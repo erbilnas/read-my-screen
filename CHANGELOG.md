@@ -19,4 +19,3 @@ First stable release of **Read My Screen**: a Raycast-native bridge from what’
 
 - **Session History**: revisit past analyses with **thumbnails**, resume chats, and manage stored sessions—your workflow, preserved on device via Raycast storage.
 - Keys stay in **Raycast preferences**; you choose what leaves your machine and under which provider’s terms.
-
