@@ -126,6 +126,15 @@ export async function appendStoredSession(input: AppendSessionInput): Promise<vo
   await persistSessionList(combined.slice(0, MAX_SESSIONS));
 }
 
+/** Absolute path to the saved screen capture for a session, if any. */
+export function getSessionScreenImagePath(record: StoredSession): string | null {
+  if (record.source !== "screen" || !record.imageFileName) {
+    return null;
+  }
+  const full = join(historyImageDir(), record.imageFileName);
+  return existsSync(full) ? full : null;
+}
+
 export function readSessionImageFile(record: StoredSession): { base64: string; mediaType: string } | null {
   if (record.source !== "screen" || !record.imageFileName) {
     return null;
