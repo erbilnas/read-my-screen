@@ -19,7 +19,9 @@ type ExtensionPreferences = {
   /** Default instructions - Pre-filled analysis instructions in the form (you can edit each run). */
   "defaultPrompt": string,
   /** Token usage - When the provider returns usage data, show estimated input/output tokens in toasts and the chat header. */
-  "showTokenUsage": boolean
+  "showTokenUsage": boolean,
+  /** Estimated API cost - Show approximate USD next to token counts using public list prices (your invoice may differ). Requires token usage to be enabled. */
+  "showEstimatedCost": boolean
 }
 
 /** Preferences accessible in all the extension's commands */

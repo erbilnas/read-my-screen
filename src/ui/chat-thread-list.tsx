@@ -9,9 +9,15 @@ export type ChatThreadListProps = {
   messages: ChatTurn[];
   effectiveSessionModel: string;
   lastRequestUsage: TokenUsage | null;
+  /** Sum of token usage across API calls in this chat (follow-ups, regenerates). */
+  sessionUsageTotal: TokenUsage | null;
+  /** How many API responses contributed to {@link sessionUsageTotal} (for subtitle). */
+  usageCallCount: number;
   showTokenUsage: boolean;
+  showEstimatedCost: boolean;
   openReply: () => void;
   copyConversationMarkdown: () => void | Promise<void>;
+  exportConversationToFile: () => void | Promise<void>;
   runRegenerate: () => void | Promise<void>;
   openSessionModelPicker: () => void;
   /** Shown in the main and file commands; omit in session history (use backToHistory). */
@@ -25,9 +31,13 @@ export function ChatThreadList({
   messages,
   effectiveSessionModel,
   lastRequestUsage,
+  sessionUsageTotal,
+  usageCallCount,
   showTokenUsage,
+  showEstimatedCost,
   openReply,
   copyConversationMarkdown,
+  exportConversationToFile,
   runRegenerate,
   openSessionModelPicker,
   startOver,
@@ -35,6 +45,12 @@ export function ChatThreadList({
 }: ChatThreadListProps) {
   const lastIdx = messages.length - 1;
   const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+  const usageOpts = { modelValue: effectiveSessionModel, showEstimatedCost };
+  let conversationSubtitle = `${modelTitleForValue(effectiveSessionModel)} · ${messages.length} messages`;
+  conversationSubtitle += formatUsageHint(lastRequestUsage ?? undefined, showTokenUsage, usageOpts);
+  if (showTokenUsage && usageCallCount > 1 && sessionUsageTotal) {
+    conversationSubtitle += ` · session` + formatUsageHint(sessionUsageTotal, showTokenUsage, usageOpts);
+  }
 
   const mainActions = (
     <ActionPanel>
@@ -49,6 +65,12 @@ export function ChatThreadList({
         icon={Icon.Document}
         shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
         onAction={() => void copyConversationMarkdown()}
+      />
+      <Action
+        title="Export Conversation to File"
+        icon={Icon.Folder}
+        shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
+        onAction={() => void exportConversationToFile()}
       />
       {startOver ? <Action title="New Analysis" icon={Icon.Rewind} onAction={startOver} /> : null}
       {backToHistory ? (
@@ -91,7 +113,7 @@ export function ChatThreadList({
 
 Press **Continue chat** or **⌘N** to send another message. The thread keeps your current model until you change it.
 
-**Model:** ${modelTitleForValue(effectiveSessionModel)}`}
+**Model:** ${modelTitleForValue(effectiveSessionModel)}${formatUsageHint(lastRequestUsage ?? undefined, showTokenUsage, usageOpts)}${usageCallCount > 1 && sessionUsageTotal ? ` · session` + formatUsageHint(sessionUsageTotal, showTokenUsage, usageOpts) : ""}`}
             />
           }
           actions={
@@ -107,6 +129,12 @@ Press **Continue chat** or **⌘N** to send another message. The thread keeps yo
                 icon={Icon.Document}
                 shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
                 onAction={() => void copyConversationMarkdown()}
+              />
+              <Action
+                title="Export Conversation to File"
+                icon={Icon.Folder}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "e" }}
+                onAction={() => void exportConversationToFile()}
               />
               {startOver ? <Action title="New Analysis" icon={Icon.Rewind} onAction={startOver} /> : null}
               {backToHistory ? (
@@ -132,10 +160,7 @@ Press **Continue chat** or **⌘N** to send another message. The thread keeps yo
         />
       </List.Section>
 
-      <List.Section
-        title="Conversation"
-        subtitle={`${modelTitleForValue(effectiveSessionModel)} · ${messages.length} messages${formatUsageHint(lastRequestUsage ?? undefined, showTokenUsage)}`}
-      >
+      <List.Section title="Conversation" subtitle={conversationSubtitle}>
         {messages.map((m, i) => (
           <List.Item
             key={`msg-${i}`}
@@ -167,6 +192,11 @@ Press **Continue chat** or **⌘N** to send another message. The thread keeps yo
                   title="Copy Conversation as Markdown"
                   icon={Icon.Document}
                   onAction={() => void copyConversationMarkdown()}
+                />
+                <Action
+                  title="Export Conversation to File"
+                  icon={Icon.Folder}
+                  onAction={() => void exportConversationToFile()}
                 />
                 {startOver ? <Action title="New Analysis" icon={Icon.Rewind} onAction={startOver} /> : null}
                 {backToHistory ? (

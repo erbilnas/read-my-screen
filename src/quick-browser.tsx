@@ -13,6 +13,10 @@ export default async function quickBrowserCommand() {
     prefs.defaultPrompt?.trim() ||
     "Describe what you see on the screen. Call out any text, UI elements, errors, or notable details.";
   const modelPref = prefs.model?.trim() || "openai:gpt-4o-mini";
+  const usageOpts = {
+    modelValue: modelPref,
+    showEstimatedCost: showTok && prefs.showEstimatedCost === true,
+  };
   const parsed = parseModelPreference(modelPref);
 
   const loading = await showToast({
@@ -31,7 +35,7 @@ export default async function quickBrowserCommand() {
     await showToast({
       style: Toast.Style.Success,
       title: "Response ready",
-      message: `Copied to clipboard.${formatUsageHint(usage, showTok)}`,
+      message: `Copied to clipboard.${formatUsageHint(usage, showTok, usageOpts)}`,
     });
   } catch (err) {
     loading.hide();

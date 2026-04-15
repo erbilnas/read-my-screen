@@ -170,11 +170,16 @@ export async function deleteStoredSession(id: string): Promise<void> {
   await persistSessionList(list.filter((s) => s.id !== id));
 }
 
-export function chatToMarkdown(messages: ChatTurn[]): string {
+export function chatToMarkdown(messages: ChatTurn[], footerMarkdown?: string): string {
   const parts: string[] = [];
   for (const m of messages) {
     const heading = m.role === "user" ? "### You" : "### Assistant";
     parts.push(`${heading}\n\n${m.content.trim()}\n`);
   }
-  return parts.join("\n---\n\n");
+  const body = parts.join("\n---\n\n");
+  const foot = footerMarkdown?.trim();
+  if (!foot) {
+    return body;
+  }
+  return `${body}\n\n---\n\n${foot}\n`;
 }

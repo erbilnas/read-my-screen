@@ -115,6 +115,15 @@
       "required": false,
       "default": false,
       "label": "Show estimated token usage"
+    },
+    {
+      "name": "showEstimatedCost",
+      "title": "Estimated API cost",
+      "description": "Show approximate USD next to token counts using public list prices (your invoice may differ). Requires token usage to be enabled.",
+      "type": "checkbox",
+      "required": false,
+      "default": false,
+      "label": "Show estimated cost (USD)"
     }
   ],
   "dependencies": {
