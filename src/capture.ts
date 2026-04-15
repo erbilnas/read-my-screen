@@ -6,7 +6,7 @@ const execFileAsync = promisify(execFile);
 
 const SCREENCAPTURE = "/usr/sbin/screencapture";
 
-export type CaptureMode = "interactive" | "fullscreen" | "window";
+export type CaptureMode = "interactive" | "fullscreen" | "window" | "clipboard";
 
 export class CaptureError extends Error {
   constructor(

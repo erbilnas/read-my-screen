@@ -1,14 +1,28 @@
 import { analyzeImageWithAnthropic } from "./anthropic-vision";
 import { analyzeImageWithGemini } from "./gemini-vision";
 import type { ParsedModel } from "./model";
+import type { ModelResponse } from "./token-usage";
 import { analyzeImageWithOpenAI, formatOpenAIError } from "./openai-vision";
+
+function anthropicImageMediaType(m: string): "image/png" | "image/jpeg" | "image/gif" | "image/webp" {
+  switch (m) {
+    case "image/jpeg":
+    case "image/gif":
+    case "image/webp":
+    case "image/png":
+      return m;
+    default:
+      return "image/png";
+  }
+}
 
 export async function analyzeImage(
   prefs: Preferences,
   parsed: ParsedModel,
-  base64Png: string,
+  base64Image: string,
   userPrompt: string,
-): Promise<string> {
+  imageMediaType = "image/png",
+): Promise<ModelResponse> {
   const { provider, modelId } = parsed;
 
   if (provider === "openai") {
@@ -16,7 +30,7 @@ export async function analyzeImage(
     if (!key) {
       throw new Error("Add your OpenAI API key in Screen AI extension preferences.");
     }
-    return analyzeImageWithOpenAI(key, modelId, base64Png, userPrompt);
+    return analyzeImageWithOpenAI(key, modelId, base64Image, userPrompt, imageMediaType);
   }
 
   if (provider === "anthropic") {
@@ -24,14 +38,14 @@ export async function analyzeImage(
     if (!key) {
       throw new Error("Add your Anthropic API key in Screen AI extension preferences.");
     }
-    return analyzeImageWithAnthropic(key, modelId, base64Png, userPrompt);
+    return analyzeImageWithAnthropic(key, modelId, base64Image, userPrompt, anthropicImageMediaType(imageMediaType));
   }
 
   const key = prefs.geminiApiKey?.trim();
   if (!key) {
     throw new Error("Add your Google Gemini API key in Screen AI extension preferences.");
   }
-  return analyzeImageWithGemini(key, modelId, base64Png, userPrompt);
+  return analyzeImageWithGemini(key, modelId, base64Image, userPrompt, imageMediaType);
 }
 
 export function formatVisionError(err: unknown): string {

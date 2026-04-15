@@ -14,14 +14,33 @@ import {
 } from "@raycast/api";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { analyzeImage, formatVisionError } from "./analyze-image";
 import { analyzeWebPageText, buildWebPageUserMessage } from "./analyze-text";
 import { BrowserTabError, getActiveBrowserTab } from "./browser-tab";
+import { ClipboardImageError, readImageFromClipboard } from "./clipboard-image";
 import { CaptureError, CaptureMode, captureToFile, safeUnlink } from "./capture";
 import { type ChatTurn, continueConversation, type SessionContext } from "./continue-chat";
 import { FetchPageError, fetchPageAsPlainText } from "./fetch-page-text";
 import { parseModelPreference } from "./model";
+import {
+  BUILTIN_PROMPT_PRESETS,
+  PRESET_PREF_DEFAULT,
+  addCustomPreset,
+  loadCustomPresets,
+  promptForPresetValue,
+  type CustomPromptPreset,
+} from "./prompt-presets";
+import {
+  appendStoredSession,
+  chatToMarkdown,
+  deleteStoredSession,
+  historyListPreview,
+  loadStoredSessions,
+  readSessionImageFile,
+  type StoredSession,
+} from "./session-history";
+import { formatUsageHint, type TokenUsage } from "./token-usage";
 
 type ContentSource = "screen" | "browser";
 
@@ -77,6 +96,34 @@ function ReplyForm({ onSubmit }: { onSubmit: (text: string) => void }) {
   );
 }
 
+type SavePresetFormValues = { title: string };
+
+function SavePresetForm({
+  promptToSave,
+  onSave,
+}: {
+  promptToSave: string;
+  onSave: (title: string, prompt: string) => void;
+}) {
+  return (
+    <Form
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Save Preset"
+            icon={Icon.Plus}
+            onSubmit={(values: SavePresetFormValues) => {
+              onSave(values.title ?? "", promptToSave);
+            }}
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.TextField id="title" title="Preset name" placeholder="e.g. Ticket description" />
+    </Form>
+  );
+}
+
 export default function AnalyzeScreenCommand() {
   const prefs = getPreferenceValues<Preferences>();
   const { push, pop } = useNavigation();
@@ -84,18 +131,43 @@ export default function AnalyzeScreenCommand() {
     prefs.defaultPrompt?.trim() ||
     "Describe what you see on the screen. Call out any text, UI elements, errors, or notable details.";
 
-  const [phase, setPhase] = useState<"setup" | "chat">("setup");
+  const [phase, setPhase] = useState<"setup" | "chat" | "history">("setup");
   const [formKey, setFormKey] = useState(0);
   const [messages, setMessages] = useState<ChatTurn[]>([]);
   const [session, setSession] = useState<SessionContext | null>(null);
   const [contentSource, setContentSource] = useState<ContentSource>("screen");
+  const [promptText, setPromptText] = useState(defaultPrompt);
+  const [presetSelection, setPresetSelection] = useState(PRESET_PREF_DEFAULT);
+  const [customPresets, setCustomPresets] = useState<CustomPromptPreset[]>([]);
+  const [historySessions, setHistorySessions] = useState<StoredSession[]>([]);
+  const [lastRequestUsage, setLastRequestUsage] = useState<TokenUsage | null>(null);
+  const showTokenUsagePref = prefs.showTokenUsage === true;
+
+  useEffect(() => {
+    void loadCustomPresets().then(setCustomPresets);
+  }, []);
+
+  useEffect(() => {
+    if (presetSelection === PRESET_PREF_DEFAULT) {
+      setPromptText(defaultPrompt);
+    }
+  }, [defaultPrompt, presetSelection]);
+
+  useEffect(() => {
+    if (phase === "history") {
+      void loadStoredSessions().then(setHistorySessions);
+    }
+  }, [phase]);
 
   const startOver = useCallback(() => {
     setMessages([]);
     setSession(null);
     setPhase("setup");
+    setPromptText(defaultPrompt);
+    setPresetSelection(PRESET_PREF_DEFAULT);
+    setLastRequestUsage(null);
     setFormKey((k) => k + 1);
-  }, []);
+  }, [defaultPrompt]);
 
   const sendFollowUp = useCallback(
     async (followUpRaw: string) => {
@@ -114,14 +186,15 @@ export default function AnalyzeScreenCommand() {
       });
 
       try {
-        const reply = await continueConversation(prefs, parsed, session, thread);
+        const { text: reply, usage } = await continueConversation(prefs, parsed, session, thread);
         setMessages([...thread, { role: "assistant", content: reply }]);
+        setLastRequestUsage(usage ?? null);
         await Clipboard.copy(reply);
         loading.hide();
         await showToast({
           style: Toast.Style.Success,
           title: "Reply ready",
-          message: "Copied to clipboard.",
+          message: `Copied to clipboard.${formatUsageHint(usage, showTokenUsagePref)}`,
         });
       } catch (err) {
         loading.hide();
@@ -132,7 +205,7 @@ export default function AnalyzeScreenCommand() {
         });
       }
     },
-    [messages, prefs, session],
+    [messages, prefs, session, showTokenUsagePref],
   );
 
   const openReply = useCallback(() => {
@@ -146,12 +219,52 @@ export default function AnalyzeScreenCommand() {
     );
   }, [pop, push, sendFollowUp]);
 
+  const copyConversationMarkdown = useCallback(async () => {
+    await Clipboard.copy(chatToMarkdown(messages));
+    await showToast({
+      style: Toast.Style.Success,
+      title: "Copied",
+      message: "Full conversation as Markdown.",
+    });
+  }, [messages]);
+
+  const restoreFromHistory = useCallback((record: StoredSession) => {
+    setLastRequestUsage(null);
+    if (record.source === "browser") {
+      setMessages(record.messages);
+      setSession({ source: "browser" });
+      setPhase("chat");
+      return;
+    }
+    const img = readSessionImageFile(record);
+    if (!img) {
+      void showToast({
+        style: Toast.Style.Failure,
+        title: "Image missing",
+        message: "The saved screen image could not be loaded.",
+      });
+      return;
+    }
+    setMessages(record.messages);
+    setSession({
+      source: "screen",
+      screenBase64: img.base64,
+      screenMediaType: img.mediaType,
+    });
+    setPhase("chat");
+  }, []);
+
+  const handleDeleteHistory = useCallback(async (id: string) => {
+    await deleteStoredSession(id);
+    setHistorySessions(await loadStoredSessions());
+  }, []);
+
   async function handleSubmit(values: FormValues) {
     const modelPref = prefs.model?.trim() || "openai:gpt-4o-mini";
     const parsed = parseModelPreference(modelPref);
 
-    const prompt = values.prompt?.trim() || defaultPrompt;
-    const source = values.contentSource ?? "screen";
+    const prompt = promptText.trim() || defaultPrompt;
+    const source = (values.contentSource as ContentSource) ?? contentSource;
 
     const loading = await showToast({
       style: Toast.Style.Animated,
@@ -166,47 +279,85 @@ export default function AnalyzeScreenCommand() {
         loading.title = "Loading page…";
         const pageText = await fetchPageAsPlainText(tab.url);
         loading.title = analyzingLabel(parsed);
-        const answer = await analyzeWebPageText(prefs, parsed, prompt, tab, pageText);
+        const { text: answer, usage } = await analyzeWebPageText(prefs, parsed, prompt, tab, pageText);
         const userDisplay = buildWebPageUserMessage(prompt, tab, pageText);
-        setMessages([
+        const thread: ChatTurn[] = [
           { role: "user", content: userDisplay },
           { role: "assistant", content: answer },
-        ]);
+        ];
+        setMessages(thread);
         setSession({ source: "browser" });
+        setLastRequestUsage(usage ?? null);
         setPhase("chat");
         loading.hide();
         await Clipboard.copy(answer);
+        void appendStoredSession({
+          title: previewText(userDisplay, 100),
+          source: "browser",
+          messages: thread,
+        }).catch(() => {
+          /* ignore persistence errors */
+        });
         await showToast({
           style: Toast.Style.Success,
           title: "Response ready",
-          message: "Copied to clipboard. Use Continue chat for follow-ups.",
+          message: `Copied to clipboard. Use Continue chat for follow-ups.${formatUsageHint(usage, showTokenUsagePref)}`,
         });
         return;
       }
 
-      outPath = join(environment.supportPath, `screen-ai-${Date.now()}.png`);
-      loading.title = "Capturing screenshot…";
-      await captureToFile(values.mode, outPath);
+      let base64: string;
+      let mediaType = "image/png";
+
+      if (values.mode === "clipboard") {
+        loading.title = "Reading clipboard…";
+        const img = await readImageFromClipboard();
+        base64 = img.base64;
+        mediaType = img.mediaType;
+      } else {
+        outPath = join(environment.supportPath, `screen-ai-${Date.now()}.png`);
+        loading.title = "Capturing screenshot…";
+        await captureToFile(values.mode, outPath);
+        base64 = readFileSync(outPath, { encoding: "base64" });
+      }
+
       loading.title = analyzingLabel(parsed);
+      const { text: answer, usage } = await analyzeImage(prefs, parsed, base64, prompt, mediaType);
 
-      const base64 = readFileSync(outPath, { encoding: "base64" });
-      const answer = await analyzeImage(prefs, parsed, base64, prompt);
-
-      setMessages([
+      const thread: ChatTurn[] = [
         { role: "user", content: prompt },
         { role: "assistant", content: answer },
-      ]);
-      setSession({ source: "screen", screenBase64: base64 });
+      ];
+      setMessages(thread);
+      setSession({ source: "screen", screenBase64: base64, screenMediaType: mediaType });
+      setLastRequestUsage(usage ?? null);
       setPhase("chat");
       loading.hide();
       await Clipboard.copy(answer);
+      void appendStoredSession({
+        title: previewText(prompt, 100),
+        source: "screen",
+        messages: thread,
+        screenBase64: base64,
+        screenMediaType: mediaType,
+      }).catch(() => {
+        /* ignore persistence errors */
+      });
       await showToast({
         style: Toast.Style.Success,
         title: "Response ready",
-        message: "Copied to clipboard. Use Continue chat for follow-ups.",
+        message: `Copied to clipboard. Use Continue chat for follow-ups.${formatUsageHint(usage, showTokenUsagePref)}`,
       });
     } catch (err) {
       loading.hide();
+      if (err instanceof ClipboardImageError) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Clipboard",
+          message: err.message,
+        });
+        return;
+      }
       if (err instanceof CaptureError) {
         const title =
           err.kind === "cancelled"
@@ -249,6 +400,48 @@ export default function AnalyzeScreenCommand() {
     }
   }
 
+  if (phase === "history") {
+    return (
+      <List
+        navigationTitle="Session history"
+        searchBarPlaceholder="Search sessions"
+        actions={
+          <ActionPanel>
+            <Action title="Back" icon={Icon.ArrowLeft} onAction={() => setPhase("setup")} />
+          </ActionPanel>
+        }
+      >
+        <List.Section title="Recent" subtitle={`${historySessions.length} saved`}>
+          {historySessions.map((s) => (
+            <List.Item
+              key={s.id}
+              id={s.id}
+              icon={s.source === "browser" ? Icon.Globe : Icon.Image}
+              title={s.title}
+              subtitle={historyListPreview(s)}
+              accessories={[
+                { text: new Date(s.createdAt).toLocaleString() },
+                { text: s.source === "browser" ? "Browser" : "Screen" },
+              ]}
+              actions={
+                <ActionPanel>
+                  <Action title="Open" icon={Icon.ArrowRight} onAction={() => restoreFromHistory(s)} />
+                  <Action
+                    title="Delete"
+                    icon={Icon.Trash}
+                    style={Action.Style.Destructive}
+                    onAction={() => void handleDeleteHistory(s.id)}
+                  />
+                  <Action title="Back" icon={Icon.ArrowLeft} onAction={() => setPhase("setup")} />
+                </ActionPanel>
+              }
+            />
+          ))}
+        </List.Section>
+      </List>
+    );
+  }
+
   if (phase === "chat" && messages.length > 0 && session) {
     const lastIdx = messages.length - 1;
     const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
@@ -267,12 +460,21 @@ export default function AnalyzeScreenCommand() {
               shortcut={{ modifiers: ["cmd"], key: "n" }}
               onAction={openReply}
             />
+            <Action
+              title="Copy Conversation as Markdown"
+              icon={Icon.Document}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+              onAction={() => void copyConversationMarkdown()}
+            />
             <Action title="New Analysis" icon={Icon.Rewind} onAction={startOver} />
             {lastAssistant ? <Action.CopyToClipboard title="Copy Last Reply" content={lastAssistant.content} /> : null}
           </ActionPanel>
         }
       >
-        <List.Section title="Conversation" subtitle={`${messages.length} messages`}>
+        <List.Section
+          title="Conversation"
+          subtitle={`${messages.length} messages${formatUsageHint(lastRequestUsage ?? undefined, showTokenUsagePref)}`}
+        >
           {messages.map((m, i) => (
             <List.Item
               key={`msg-${i}`}
@@ -294,6 +496,11 @@ export default function AnalyzeScreenCommand() {
                     content={m.content}
                   />
                   <Action title="Continue Chat" icon={Icon.Message} onAction={openReply} />
+                  <Action
+                    title="Copy Conversation as Markdown"
+                    icon={Icon.Document}
+                    onAction={() => void copyConversationMarkdown()}
+                  />
                   <Action title="New Analysis" icon={Icon.Rewind} onAction={startOver} />
                 </ActionPanel>
               }
@@ -310,6 +517,45 @@ export default function AnalyzeScreenCommand() {
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Run Analysis" icon={Icon.Wand} onSubmit={handleSubmit} />
+          <Action title="Session History" icon={Icon.Clock} onAction={() => setPhase("history")} />
+          <Action
+            title="Save Instructions as Preset"
+            icon={Icon.Plus}
+            onAction={() =>
+              push(
+                <SavePresetForm
+                  promptToSave={promptText}
+                  onSave={async (title, prompt) => {
+                    const trimmed = title.trim();
+                    if (!trimmed) {
+                      await showToast({
+                        style: Toast.Style.Failure,
+                        title: "Name required",
+                        message: "Enter a name for this preset.",
+                      });
+                      return;
+                    }
+                    const before = customPresets.length;
+                    const next = await addCustomPreset(trimmed, prompt);
+                    setCustomPresets(next);
+                    if (next.length > before) {
+                      const last = next[next.length - 1];
+                      setPresetSelection(`custom:${last.id}`);
+                      setPromptText(last.prompt);
+                      pop();
+                      await showToast({ style: Toast.Style.Success, title: "Preset saved" });
+                    } else {
+                      await showToast({
+                        style: Toast.Style.Failure,
+                        title: "Could not save",
+                        message: "Instructions cannot be empty.",
+                      });
+                    }
+                  }}
+                />,
+              )
+            }
+          />
         </ActionPanel>
       }
     >
@@ -323,16 +569,38 @@ export default function AnalyzeScreenCommand() {
         <Form.Dropdown.Item value="screen" title="Screen capture" icon={Icon.Desktop} />
         <Form.Dropdown.Item value="browser" title="Current browser page" icon={Icon.Globe} />
       </Form.Dropdown>
+      <Form.Dropdown
+        id="promptPreset"
+        title="Instruction preset"
+        value={presetSelection}
+        onChange={(v) => {
+          const next = v || PRESET_PREF_DEFAULT;
+          setPresetSelection(next);
+          const resolved = promptForPresetValue(next, defaultPrompt, customPresets);
+          if (resolved !== undefined) {
+            setPromptText(resolved);
+          }
+        }}
+      >
+        <Form.Dropdown.Item value={PRESET_PREF_DEFAULT} title="Default (from preferences)" icon={Icon.Star} />
+        {BUILTIN_PROMPT_PRESETS.map((b) => (
+          <Form.Dropdown.Item key={b.id} value={`builtin:${b.id}`} title={b.title} icon={Icon.Text} />
+        ))}
+        {customPresets.map((c) => (
+          <Form.Dropdown.Item key={c.id} value={`custom:${c.id}`} title={c.title} icon={Icon.StarCircle} />
+        ))}
+      </Form.Dropdown>
       {contentSource === "screen" ? (
         <Form.Dropdown
           id="mode"
           title="Capture"
           defaultValue="interactive"
-          info="Interactive and Window modes open macOS selection UI."
+          info="Interactive and Window modes open macOS selection UI. Clipboard uses a file-backed image from the clipboard."
         >
           <Form.Dropdown.Item value="interactive" title="Interactive region" icon={Icon.Crop} />
           <Form.Dropdown.Item value="fullscreen" title="Full screen" icon={Icon.Desktop} />
           <Form.Dropdown.Item value="window" title="Single window" icon={Icon.Window} />
+          <Form.Dropdown.Item value="clipboard" title="Clipboard image (file)" icon={Icon.Clipboard} />
         </Form.Dropdown>
       ) : (
         <Form.Description text="Uses AppleScript to read the active tab from Chrome, Safari, Arc, Brave, Edge, Opera, or Vivaldi (first browser with an open window). The page is fetched and converted to plain text—SPA or login-only content may not match what you see on screen." />
@@ -341,7 +609,8 @@ export default function AnalyzeScreenCommand() {
         id="prompt"
         title="Instructions for AI"
         placeholder={defaultPrompt}
-        defaultValue={defaultPrompt}
+        value={promptText}
+        onChange={setPromptText}
         info="What you want the model to focus on (summary, OCR, errors, UI review, page outline, etc.)."
       />
     </Form>

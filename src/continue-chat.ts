@@ -1,6 +1,7 @@
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { chatWithHistoryOpenAI } from "./openai-vision";
 import type { ParsedModel } from "./model";
+import type { ModelResponse } from "./token-usage";
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
@@ -11,17 +12,25 @@ export type ChatTurn = {
   content: string;
 };
 
-export type SessionContext = { source: "screen"; screenBase64: string } | { source: "browser" };
+export type SessionContext =
+  | { source: "screen"; screenBase64: string; screenMediaType?: string }
+  | { source: "browser" };
 
 type AnthropicResponse = {
   content?: Array<{ type: string; text?: string }>;
   error?: { message?: string };
+  usage?: { input_tokens?: number; output_tokens?: number };
 };
 
 type GeminiResponse = {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string }> };
   }>;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
   error?: { message?: string; code?: number };
 };
 
@@ -33,7 +42,7 @@ export async function continueConversation(
   parsed: ParsedModel,
   session: SessionContext,
   messages: ChatTurn[],
-): Promise<string> {
+): Promise<ModelResponse> {
   if (messages.length < 1 || messages[messages.length - 1].role !== "user") {
     throw new Error("Invalid conversation state.");
   }
@@ -63,6 +72,11 @@ export async function continueConversation(
   return chatWithHistoryGemini(key, modelId, session, messages);
 }
 
+function screenDataUrl(session: { screenBase64: string; screenMediaType?: string }): string {
+  const mime = session.screenMediaType?.trim() || "image/png";
+  return `data:${mime};base64,${session.screenBase64}`;
+}
+
 function buildOpenAIMessages(session: SessionContext, messages: ChatTurn[]): ChatCompletionMessageParam[] {
   const out: ChatCompletionMessageParam[] = [];
 
@@ -75,7 +89,7 @@ function buildOpenAIMessages(session: SessionContext, messages: ChatTurn[]): Cha
         {
           type: "image_url",
           image_url: {
-            url: `data:image/png;base64,${session.screenBase64}`,
+            url: screenDataUrl(session),
             detail: "auto",
           },
         },
@@ -93,6 +107,18 @@ function buildOpenAIMessages(session: SessionContext, messages: ChatTurn[]): Cha
   return out;
 }
 
+function anthropicScreenMediaType(m: string | undefined): "image/png" | "image/jpeg" | "image/gif" | "image/webp" {
+  switch (m) {
+    case "image/jpeg":
+    case "image/gif":
+    case "image/webp":
+    case "image/png":
+      return m;
+    default:
+      return "image/png";
+  }
+}
+
 function buildAnthropicMessages(session: SessionContext, messages: ChatTurn[]): unknown[] {
   if (session.source === "screen") {
     const [first, ...rest] = messages;
@@ -104,7 +130,7 @@ function buildAnthropicMessages(session: SessionContext, messages: ChatTurn[]): 
             type: "image",
             source: {
               type: "base64",
-              media_type: "image/png",
+              media_type: anthropicScreenMediaType(session.screenMediaType),
               data: session.screenBase64,
             },
           },
@@ -134,7 +160,7 @@ async function chatWithHistoryAnthropic(
   model: string,
   session: SessionContext,
   messages: ChatTurn[],
-): Promise<string> {
+): Promise<ModelResponse> {
   const res = await fetch(ANTHROPIC_API, {
     method: "POST",
     headers: {
@@ -162,16 +188,21 @@ async function chatWithHistoryAnthropic(
   if (!trimmed) {
     throw new Error("The model returned an empty response.");
   }
-  return trimmed;
+  const usage =
+    data.usage?.input_tokens != null || data.usage?.output_tokens != null
+      ? { input: data.usage?.input_tokens, output: data.usage?.output_tokens }
+      : undefined;
+  return { text: trimmed, usage };
 }
 
 function buildGeminiContents(session: SessionContext, messages: ChatTurn[]): unknown[] {
   if (session.source === "screen") {
     const [first, ...rest] = messages;
+    const mimeType = session.screenMediaType?.trim() || "image/png";
     const contents: unknown[] = [
       {
         role: "user",
-        parts: [{ text: first.content }, { inlineData: { mimeType: "image/png", data: session.screenBase64 } }],
+        parts: [{ text: first.content }, { inlineData: { mimeType, data: session.screenBase64 } }],
       },
     ];
     for (const m of rest) {
@@ -192,7 +223,7 @@ async function chatWithHistoryGemini(
   model: string,
   session: SessionContext,
   messages: ChatTurn[],
-): Promise<string> {
+): Promise<ModelResponse> {
   const url = `${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const res = await fetch(url, {
@@ -212,5 +243,14 @@ async function chatWithHistoryGemini(
   if (!trimmed) {
     throw new Error("The model returned an empty response.");
   }
-  return trimmed;
+  const um = data.usageMetadata;
+  const usage =
+    um && (um.promptTokenCount != null || um.candidatesTokenCount != null || um.totalTokenCount != null)
+      ? {
+          input: um.promptTokenCount,
+          output: um.candidatesTokenCount,
+          total: um.totalTokenCount,
+        }
+      : undefined;
+  return { text: trimmed, usage };
 }

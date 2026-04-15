@@ -2,6 +2,7 @@ import { analyzeTextWithAnthropic } from "./anthropic-vision";
 import type { BrowserTabInfo } from "./browser-tab";
 import { analyzeTextWithGemini } from "./gemini-vision";
 import type { ParsedModel } from "./model";
+import type { ModelResponse } from "./token-usage";
 import { analyzeTextWithOpenAI } from "./openai-vision";
 
 export function buildWebPageUserMessage(instructions: string, tab: BrowserTabInfo, pagePlainText: string): string {
@@ -24,7 +25,7 @@ export async function analyzeWebPageText(
   instructions: string,
   tab: BrowserTabInfo,
   pagePlainText: string,
-): Promise<string> {
+): Promise<ModelResponse> {
   const userMessage = buildWebPageUserMessage(instructions, tab, pagePlainText);
   const { provider, modelId } = parsed;
 
