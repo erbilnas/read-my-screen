@@ -6,6 +6,33 @@
 
 **Read My Screen** is a [Raycast](https://www.raycast.com/) extension that turns **screenshots**, **clipboard images**, **image files**, and the **active browser tab** into AI-powered explanations — using **OpenAI** (GPT-4o and more), **Anthropic Claude**, or **Google Gemini**. You add your own API keys; requests go directly to the provider you choose (no custom backend).
 
+## Screenshots
+
+<p align="center">
+  <img src="media/01-command-list.png" width="720" alt="Raycast root search listing Read My Screen extension commands" /><br />
+  <em>Extension commands in Raycast.</em>
+</p>
+
+<p align="center">
+  <img src="media/02-main-form.png" width="720" alt="Read My Screen main form with content source, capture mode, model, and instructions" /><br />
+  <em>Configure capture, model, and instructions before running analysis.</em>
+</p>
+
+<p align="center">
+  <img src="media/03-analyzing.png" width="720" alt="Read My Screen status while the model analyzes a full-screen capture" /><br />
+  <em>Analysis in progress with your chosen provider.</em>
+</p>
+
+<p align="center">
+  <img src="media/04-chat-result.png" width="720" alt="Read My Screen chat view with AI response and continue-chat sidebar" /><br />
+  <em>Structured reply, copy actions, and follow-up in the same thread.</em>
+</p>
+
+<p align="center">
+  <img src="media/05-session-history.png" width="720" alt="Session History empty state with search and hints" /><br />
+  <em>Reopen past runs from Session History once you have saved conversations.</em>
+</p>
+
 ## What you can do
 
 - **Screenshot AI** — Capture a region, window, or full screen and ask questions (OCR, errors, UI review, summaries).
