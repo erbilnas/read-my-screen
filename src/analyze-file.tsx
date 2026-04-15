@@ -7,24 +7,15 @@ import {
   Icon,
   List,
   Toast,
-  environment,
   getPreferenceValues,
   showToast,
   useNavigation,
 } from "@raycast/api";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { useCallback, useEffect, useState } from "react";
 import { analyzeImage, formatVisionError } from "./analyze-image";
-import { analyzeWebPageText, buildWebPageUserMessage } from "./analyze-text";
-import { BrowserTabError, getActiveBrowserTab } from "./browser-tab";
-import { ClipboardImageError, readImageFromClipboard } from "./clipboard-image";
-import { CaptureError, CaptureMode, captureToFile, safeUnlink } from "./capture";
-import { type ChatTurn, continueConversation, type SessionContext } from "./continue-chat";
-import { FetchPageError, fetchPageAsPlainText } from "./fetch-page-text";
-import { effectiveModelPreference, MODEL_PREFERENCE_OPTIONS, modelTitleForValue, parseModelPreference } from "./model";
-import { regenerateLastTurn } from "./regenerate-turn";
+import { ReplyForm, SessionModelForm } from "./chat-forms";
+import { mimeTypeForImagePath } from "./clipboard-image";
 import {
   BUILTIN_PROMPT_PRESETS,
   PRESET_PREF_DEFAULT,
@@ -33,55 +24,17 @@ import {
   promptForPresetValue,
   type CustomPromptPreset,
 } from "./prompt-presets";
-import {
-  appendStoredSession,
-  chatToMarkdown,
-  deleteStoredSession,
-  getSessionScreenImagePath,
-  historyListPreview,
-  loadStoredSessions,
-  readSessionImageFile,
-  type StoredSession,
-} from "./stored-sessions";
+import { type ChatTurn, continueConversation, type SessionContext } from "./continue-chat";
+import { effectiveModelPreference, MODEL_PREFERENCE_OPTIONS, modelTitleForValue, parseModelPreference } from "./model";
+import { regenerateLastTurn } from "./regenerate-turn";
+import { appendStoredSession, chatToMarkdown } from "./stored-sessions";
 import { formatUsageHint, type TokenUsage } from "./token-usage";
-import { ReplyForm, SessionModelForm } from "./chat-forms";
-
-type ContentSource = "screen" | "browser";
-
-type FormValues = {
-  contentSource: ContentSource;
-  mode: CaptureMode;
-  prompt: string;
-};
-
-function analyzingLabel(parsed: ReturnType<typeof parseModelPreference>): string {
-  switch (parsed.provider) {
-    case "openai":
-      return "Analyzing with OpenAI…";
-    case "anthropic":
-      return "Analyzing with Claude…";
-    case "gemini":
-      return "Analyzing with Gemini…";
-    default:
-      return "Analyzing…";
-  }
-}
 
 function previewText(text: string, max = 120): string {
   const t = text.trim().replace(/\s+/g, " ");
   return t.length <= max ? t : `${t.slice(0, max)}…`;
 }
 
-function historyDetailMarkdown(s: StoredSession): string {
-  const imgPath = getSessionScreenImagePath(s);
-  const preview = historyListPreview(s);
-  if (imgPath) {
-    return `![Captured screen](${pathToFileURL(imgPath).href})\n\n_${preview}_`;
-  }
-  return preview;
-}
-
-/** Renders arbitrary text safely as markdown (fenced block). */
 function userInstructionsMarkdown(body: string): string {
   const fence = body.includes("```") ? "````" : "```";
   return `### Message\n\n${fence}\n${body}\n${fence}`;
@@ -115,27 +68,29 @@ function SavePresetForm({
   );
 }
 
-export default function AnalyzeScreenCommand() {
+type FormValues = {
+  imageFile: string[];
+  prompt: string;
+};
+
+export default function AnalyzeFileCommand() {
   const prefs = getPreferenceValues<Preferences>();
   const { push, pop } = useNavigation();
   const defaultPrompt =
     prefs.defaultPrompt?.trim() ||
     "Describe what you see on the screen. Call out any text, UI elements, errors, or notable details.";
 
-  const [phase, setPhase] = useState<"setup" | "chat" | "history">("setup");
+  const [phase, setPhase] = useState<"setup" | "chat">("setup");
   const [formKey, setFormKey] = useState(0);
   const [messages, setMessages] = useState<ChatTurn[]>([]);
   const [session, setSession] = useState<SessionContext | null>(null);
-  const [contentSource, setContentSource] = useState<ContentSource>("screen");
   const [promptText, setPromptText] = useState(defaultPrompt);
   const [presetSelection, setPresetSelection] = useState(PRESET_PREF_DEFAULT);
   const [customPresets, setCustomPresets] = useState<CustomPromptPreset[]>([]);
-  const [historySessions, setHistorySessions] = useState<StoredSession[]>([]);
-  const [lastRequestUsage, setLastRequestUsage] = useState<TokenUsage | null>(null);
-  /** Full `provider:modelId` string for the current thread (follow-ups and regenerate). */
-  const [sessionModel, setSessionModel] = useState("");
-  /** Setup form only: empty means use extension default from preferences. */
+  const [pickedFiles, setPickedFiles] = useState<string[]>([]);
   const [setupModelOverride, setSetupModelOverride] = useState("");
+  const [sessionModel, setSessionModel] = useState("");
+  const [lastRequestUsage, setLastRequestUsage] = useState<TokenUsage | null>(null);
   const showTokenUsagePref = prefs.showTokenUsage === true;
 
   const effectiveSessionModel = sessionModel.trim() || prefs.model?.trim() || "openai:gpt-4o-mini";
@@ -150,12 +105,6 @@ export default function AnalyzeScreenCommand() {
     }
   }, [defaultPrompt, presetSelection]);
 
-  useEffect(() => {
-    if (phase === "history") {
-      void loadStoredSessions().then(setHistorySessions);
-    }
-  }, [phase]);
-
   const startOver = useCallback(() => {
     setMessages([]);
     setSession(null);
@@ -165,6 +114,7 @@ export default function AnalyzeScreenCommand() {
     setLastRequestUsage(null);
     setSessionModel("");
     setSetupModelOverride("");
+    setPickedFiles([]);
     setFormKey((k) => k + 1);
   }, [defaultPrompt]);
 
@@ -271,105 +221,45 @@ export default function AnalyzeScreenCommand() {
     });
   }, [messages]);
 
-  const restoreFromHistory = useCallback(
-    (record: StoredSession) => {
-      setLastRequestUsage(null);
-      setSessionModel(prefs.model?.trim() || "openai:gpt-4o-mini");
-      if (record.source === "browser") {
-        setMessages(record.messages);
-        setSession({ source: "browser" });
-        setPhase("chat");
-        return;
-      }
-      const img = readSessionImageFile(record);
-      if (!img) {
-        void showToast({
-          style: Toast.Style.Failure,
-          title: "Image missing",
-          message: "The saved screen image could not be loaded.",
-        });
-        return;
-      }
-      setMessages(record.messages);
-      setSession({
-        source: "screen",
-        screenBase64: img.base64,
-        screenMediaType: img.mediaType,
-      });
-      setPhase("chat");
-    },
-    [prefs.model],
-  );
-
-  const handleDeleteHistory = useCallback(async (id: string) => {
-    await deleteStoredSession(id);
-    setHistorySessions(await loadStoredSessions());
-  }, []);
-
   async function handleSubmit(values: FormValues) {
+    const path = values.imageFile?.[0]?.trim() ?? pickedFiles[0]?.trim();
+    if (!path) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Image required",
+        message: "Choose an image file (PNG, JPEG, WebP, or GIF).",
+      });
+      return;
+    }
+
+    const mediaType = mimeTypeForImagePath(path);
+    if (!mediaType) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Unsupported file",
+        message: "Use PNG, JPEG, WebP, or GIF.",
+      });
+      return;
+    }
+
     const effectiveSm = effectiveModelPreference(prefs.model, setupModelOverride);
     const parsed = parseModelPreference(effectiveSm);
-
     const prompt = promptText.trim() || defaultPrompt;
-    const source = (values.contentSource as ContentSource) ?? contentSource;
 
     const loading = await showToast({
       style: Toast.Style.Animated,
-      title: source === "browser" ? "Reading browser tab…" : "Capturing screenshot…",
+      title: "Reading file…",
     });
 
-    let outPath: string | null = null;
-
     try {
-      if (source === "browser") {
-        const tab = await getActiveBrowserTab();
-        loading.title = "Loading page…";
-        const pageText = await fetchPageAsPlainText(tab.url);
-        loading.title = analyzingLabel(parsed);
-        const { text: answer, usage } = await analyzeWebPageText(prefs, parsed, prompt, tab, pageText);
-        const userDisplay = buildWebPageUserMessage(prompt, tab, pageText);
-        const thread: ChatTurn[] = [
-          { role: "user", content: userDisplay },
-          { role: "assistant", content: answer },
-        ];
-        setMessages(thread);
-        setSession({ source: "browser" });
-        setSessionModel(effectiveSm);
-        setLastRequestUsage(usage ?? null);
-        setPhase("chat");
+      const buf = readFileSync(path);
+      if (!buf.length) {
         loading.hide();
-        await Clipboard.copy(answer);
-        void appendStoredSession({
-          title: previewText(userDisplay, 100),
-          source: "browser",
-          messages: thread,
-        }).catch(() => {
-          /* ignore persistence errors */
-        });
-        await showToast({
-          style: Toast.Style.Success,
-          title: "Response ready",
-          message: `Copied to clipboard. Use Continue chat for follow-ups.${formatUsageHint(usage, showTokenUsagePref)}`,
-        });
+        await showToast({ style: Toast.Style.Failure, title: "Empty file", message: "The image file is empty." });
         return;
       }
-
-      let base64: string;
-      let mediaType = "image/png";
-
-      if (values.mode === "clipboard") {
-        loading.title = "Reading clipboard…";
-        const img = await readImageFromClipboard();
-        base64 = img.base64;
-        mediaType = img.mediaType;
-      } else {
-        outPath = join(environment.supportPath, `screen-ai-${Date.now()}.png`);
-        loading.title = "Capturing screenshot…";
-        await captureToFile(values.mode, outPath);
-        base64 = readFileSync(outPath, { encoding: "base64" });
-      }
-
-      loading.title = analyzingLabel(parsed);
+      const base64 = buf.toString("base64");
+      loading.title = "Analyzing…";
       const { text: answer, usage } = await analyzeImage(prefs, parsed, base64, prompt, mediaType);
 
       const thread: ChatTurn[] = [
@@ -390,7 +280,7 @@ export default function AnalyzeScreenCommand() {
         screenBase64: base64,
         screenMediaType: mediaType,
       }).catch(() => {
-        /* ignore persistence errors */
+        /* ignore */
       });
       await showToast({
         style: Toast.Style.Success,
@@ -399,98 +289,12 @@ export default function AnalyzeScreenCommand() {
       });
     } catch (err) {
       loading.hide();
-      if (err instanceof ClipboardImageError) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: "Clipboard",
-          message: err.message,
-        });
-        return;
-      }
-      if (err instanceof CaptureError) {
-        const title =
-          err.kind === "cancelled"
-            ? "Capture cancelled"
-            : err.kind === "permission"
-              ? "Screen capture blocked"
-              : "Capture failed";
-        await showToast({
-          style: Toast.Style.Failure,
-          title,
-          message: err.message,
-        });
-        return;
-      }
-      if (err instanceof BrowserTabError) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: "Browser tab",
-          message: err.message,
-        });
-        return;
-      }
-      if (err instanceof FetchPageError) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: "Could not load page",
-          message: err.message,
-        });
-        return;
-      }
       await showToast({
         style: Toast.Style.Failure,
         title: "Analysis failed",
         message: formatVisionError(err),
       });
-    } finally {
-      if (outPath) {
-        safeUnlink(outPath);
-      }
     }
-  }
-
-  if (phase === "history") {
-    return (
-      <List
-        navigationTitle="Session history"
-        searchBarPlaceholder="Search sessions"
-        isShowingDetail
-        actions={
-          <ActionPanel>
-            <Action title="Back" icon={Icon.ArrowLeft} onAction={() => setPhase("setup")} />
-          </ActionPanel>
-        }
-      >
-        <List.Section title="Recent" subtitle={`${historySessions.length} saved`}>
-          {historySessions.map((s) => (
-            <List.Item
-              key={s.id}
-              id={s.id}
-              icon={s.source === "browser" ? Icon.Globe : Icon.Image}
-              title={s.title}
-              subtitle={historyListPreview(s)}
-              detail={<List.Item.Detail markdown={historyDetailMarkdown(s)} />}
-              accessories={[
-                { text: new Date(s.createdAt).toLocaleString() },
-                { text: s.source === "browser" ? "Browser" : "Screen" },
-              ]}
-              actions={
-                <ActionPanel>
-                  <Action title="Open" icon={Icon.ArrowRight} onAction={() => restoreFromHistory(s)} />
-                  <Action
-                    title="Delete"
-                    icon={Icon.Trash}
-                    style={Action.Style.Destructive}
-                    onAction={() => void handleDeleteHistory(s.id)}
-                  />
-                  <Action title="Back" icon={Icon.ArrowLeft} onAction={() => setPhase("setup")} />
-                </ActionPanel>
-              }
-            />
-          ))}
-        </List.Section>
-      </List>
-    );
   }
 
   if (phase === "chat" && messages.length > 0 && session) {
@@ -499,7 +303,7 @@ export default function AnalyzeScreenCommand() {
 
     return (
       <List
-        navigationTitle="Screen AI"
+        navigationTitle="Screen AI · File"
         searchBarPlaceholder="Search in this chat"
         isShowingDetail
         selectedItemId={`msg-${lastIdx}`}
@@ -581,7 +385,6 @@ export default function AnalyzeScreenCommand() {
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Run Analysis" icon={Icon.Wand} onSubmit={handleSubmit} />
-          <Action title="Session History" icon={Icon.Clock} onAction={() => setPhase("history")} />
           <Action
             title="Save Instructions as Preset"
             icon={Icon.Plus}
@@ -623,28 +426,28 @@ export default function AnalyzeScreenCommand() {
         </ActionPanel>
       }
     >
-      <Form.Description text="Set API keys for the model provider in extension preferences. Screen capture needs Screen Recording for Raycast." />
+      <Form.Description text="Choose a local image file. API keys and default model are set in extension preferences." />
       <Form.Dropdown
         id="modelForRun"
         title="Model"
         value={setupModelOverride}
         onChange={setSetupModelOverride}
-        info="Overrides the extension default model for this run only. Follow-ups and regenerate use the same model until you change it in chat."
+        info="Overrides the extension default for this run. Follow-ups use the same model until you change it in chat."
       >
         <Form.Dropdown.Item value="" title="Default (from preferences)" icon={Icon.Star} />
         {MODEL_PREFERENCE_OPTIONS.map((opt) => (
           <Form.Dropdown.Item key={opt.value} value={opt.value} title={opt.title} />
         ))}
       </Form.Dropdown>
-      <Form.Dropdown
-        id="contentSource"
-        title="Content source"
-        defaultValue="screen"
-        onChange={(v) => setContentSource(v as ContentSource)}
-      >
-        <Form.Dropdown.Item value="screen" title="Screen capture" icon={Icon.Desktop} />
-        <Form.Dropdown.Item value="browser" title="Current browser page" icon={Icon.Globe} />
-      </Form.Dropdown>
+      <Form.FilePicker
+        id="imageFile"
+        title="Image file"
+        value={pickedFiles}
+        onChange={setPickedFiles}
+        allowMultipleSelection={false}
+        canChooseDirectories={false}
+        info="PNG, JPEG, WebP, or GIF."
+      />
       <Form.Dropdown
         id="promptPreset"
         title="Instruction preset"
@@ -666,28 +469,12 @@ export default function AnalyzeScreenCommand() {
           <Form.Dropdown.Item key={c.id} value={`custom:${c.id}`} title={c.title} icon={Icon.StarCircle} />
         ))}
       </Form.Dropdown>
-      {contentSource === "screen" ? (
-        <Form.Dropdown
-          id="mode"
-          title="Capture"
-          defaultValue="interactive"
-          info="Interactive and Window modes open macOS selection UI. Clipboard uses a file-backed image from the clipboard."
-        >
-          <Form.Dropdown.Item value="interactive" title="Interactive region" icon={Icon.Crop} />
-          <Form.Dropdown.Item value="fullscreen" title="Full screen" icon={Icon.Desktop} />
-          <Form.Dropdown.Item value="window" title="Single window" icon={Icon.Window} />
-          <Form.Dropdown.Item value="clipboard" title="Clipboard image (file)" icon={Icon.Clipboard} />
-        </Form.Dropdown>
-      ) : (
-        <Form.Description text="Uses AppleScript to read the active tab from Chrome, Safari, Arc, Dia, Brave, Edge, Opera, or Vivaldi (first browser with an open window). The page is fetched and converted to plain text—SPA or login-only content may not match what you see on screen." />
-      )}
       <Form.TextArea
         id="prompt"
         title="Instructions for AI"
         placeholder={defaultPrompt}
         value={promptText}
         onChange={setPromptText}
-        info="What you want the model to focus on (summary, OCR, errors, UI review, page outline, etc.)."
       />
     </Form>
   );

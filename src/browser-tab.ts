@@ -70,6 +70,7 @@ const browserHandlers: Array<{ match: (name: string) => boolean; script: () => s
   { match: (n) => n === "Google Chrome", script: () => chromiumScript("Google Chrome") },
   { match: (n) => n === "Safari", script: () => safariScript },
   { match: (n) => n === "Arc", script: () => chromiumScript("Arc") },
+  { match: (n) => n === "Dia", script: () => chromiumScript("Dia") },
   { match: (n) => n === "Brave Browser", script: () => chromiumScript("Brave Browser") },
   { match: (n) => n === "Microsoft Edge", script: () => chromiumScript("Microsoft Edge") },
   { match: (n) => n === "Chromium", script: () => chromiumScript("Chromium") },
@@ -121,7 +122,7 @@ export async function getActiveBrowserTab(): Promise<BrowserTabInfo> {
   }
 
   throw new BrowserTabError(
-    "No supported browser with an open tab was found. Open a page in Chrome, Safari, Arc, Brave, Edge, Opera, or Vivaldi.",
+    "No supported browser with an open tab was found. Open a page in Chrome, Safari, Arc, Dia, Brave, Edge, Opera, or Vivaldi.",
     "unsupported",
   );
 }

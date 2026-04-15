@@ -23,6 +23,27 @@
       "subtitle": "Screen AI",
       "description": "Analyze a file-backed image on the clipboard with your default model and instructions",
       "mode": "no-view"
+    },
+    {
+      "name": "quick-browser",
+      "title": "Quick Analyze Browser Page",
+      "subtitle": "Screen AI",
+      "description": "Analyze the current browser tab as text with your default model and instructions",
+      "mode": "no-view"
+    },
+    {
+      "name": "analyze-file",
+      "title": "Analyze Image File",
+      "subtitle": "Screen AI",
+      "description": "Pick a local image file and analyze it with AI (follow-up chat supported)",
+      "mode": "view"
+    },
+    {
+      "name": "session-history",
+      "title": "Session History",
+      "subtitle": "Screen AI",
+      "description": "Open saved Screen AI sessions and continue the conversation",
+      "mode": "view"
     }
   ],
   "preferences": [

@@ -30,6 +30,12 @@ declare namespace Preferences {
   export type AnalyzeScreen = ExtensionPreferences & {}
   /** Preferences accessible in the `quick-clipboard` command */
   export type QuickClipboard = ExtensionPreferences & {}
+  /** Preferences accessible in the `quick-browser` command */
+  export type QuickBrowser = ExtensionPreferences & {}
+  /** Preferences accessible in the `analyze-file` command */
+  export type AnalyzeFile = ExtensionPreferences & {}
+  /** Preferences accessible in the `session-history` command */
+  export type SessionHistory = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
@@ -37,5 +43,11 @@ declare namespace Arguments {
   export type AnalyzeScreen = {}
   /** Arguments passed to the `quick-clipboard` command */
   export type QuickClipboard = {}
+  /** Arguments passed to the `quick-browser` command */
+  export type QuickBrowser = {}
+  /** Arguments passed to the `analyze-file` command */
+  export type AnalyzeFile = {}
+  /** Arguments passed to the `session-history` command */
+  export type SessionHistory = {}
 }
 
