@@ -145,6 +145,7 @@
     "dev": "ray develop",
     "lint": "ray lint",
     "fix-lint": "ray lint --fix",
-    "generate-icon": "node scripts/generate-icon.cjs"
+    "generate-icon": "node scripts/generate-icon.cjs",
+    "publish": "npx @raycast/api@latest publish"
   }
 }

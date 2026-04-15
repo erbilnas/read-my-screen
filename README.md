@@ -49,4 +49,4 @@ For reporting security issues in this codebase, see [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
