@@ -10,7 +10,7 @@ import {
   useNavigation,
 } from "@raycast/api";
 import { readFileSync } from "node:fs";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { analyzeImage, formatVisionError } from "./analyze-image";
 import { ReplyForm, SavePresetForm, SessionModelForm } from "./chat-forms";
 import { mimeTypeForImagePath } from "./clipboard-image";
@@ -26,8 +26,9 @@ import { type ChatTurn, continueConversation, type SessionContext } from "./cont
 import { effectiveModelPreference, MODEL_PREFERENCE_OPTIONS, parseModelPreference } from "./model";
 import { regenerateLastTurn } from "./regenerate-turn";
 import { EXTENSION_DISPLAY_NAME } from "./extension-brand";
+import { exportChatConversationToFile } from "./export-chat";
 import { appendStoredSession, chatToMarkdown } from "./stored-sessions";
-import { formatUsageHint, type TokenUsage } from "./token-usage";
+import { formatUsageHint, pushUsageLedger, sumTokenUsages, type TokenUsage } from "./token-usage";
 import { ChatThreadList } from "./ui/chat-thread-list";
 import { previewText } from "./ui/markdown";
 
@@ -54,9 +55,16 @@ export default function AnalyzeFileCommand() {
   const [setupModelOverride, setSetupModelOverride] = useState("");
   const [sessionModel, setSessionModel] = useState("");
   const [lastRequestUsage, setLastRequestUsage] = useState<TokenUsage | null>(null);
+  const [usageLedger, setUsageLedger] = useState<TokenUsage[]>([]);
   const showTokenUsagePref = prefs.showTokenUsage === true;
+  const showEstimatedCostPref = showTokenUsagePref && prefs.showEstimatedCost === true;
 
   const effectiveSessionModel = sessionModel.trim() || prefs.model?.trim() || "openai:gpt-4o-mini";
+  const usageHintOpts = useMemo(
+    () => ({ modelValue: effectiveSessionModel, showEstimatedCost: showEstimatedCostPref }),
+    [effectiveSessionModel, showEstimatedCostPref],
+  );
+  const sessionUsageTotal = useMemo(() => sumTokenUsages(usageLedger), [usageLedger]);
 
   useEffect(() => {
     void loadCustomPresets().then(setCustomPresets);
@@ -75,6 +83,7 @@ export default function AnalyzeFileCommand() {
     setPromptText(defaultPrompt);
     setPresetSelection(PRESET_PREF_DEFAULT);
     setLastRequestUsage(null);
+    setUsageLedger([]);
     setSessionModel("");
     setSetupModelOverride("");
     setPickedFiles([]);
@@ -100,12 +109,13 @@ export default function AnalyzeFileCommand() {
         const { text: reply, usage } = await continueConversation(prefs, parsed, session, thread);
         setMessages([...thread, { role: "assistant", content: reply }]);
         setLastRequestUsage(usage ?? null);
+        setUsageLedger((prev) => pushUsageLedger(prev, usage, false));
         await Clipboard.copy(reply);
         loading.hide();
         await showToast({
           style: Toast.Style.Success,
           title: "Reply ready",
-          message: `Copied to clipboard.${formatUsageHint(usage, showTokenUsagePref)}`,
+          message: `Copied to clipboard.${formatUsageHint(usage, showTokenUsagePref, usageHintOpts)}`,
         });
       } catch (err) {
         loading.hide();
@@ -116,7 +126,7 @@ export default function AnalyzeFileCommand() {
         });
       }
     },
-    [messages, prefs, session, showTokenUsagePref, effectiveSessionModel],
+    [messages, prefs, session, showTokenUsagePref, usageHintOpts, effectiveSessionModel],
   );
 
   const runRegenerate = useCallback(async () => {
@@ -131,6 +141,7 @@ export default function AnalyzeFileCommand() {
       const { messages: next, usage } = await regenerateLastTurn(prefs, effectiveSessionModel, messages, session);
       setMessages(next);
       setLastRequestUsage(usage);
+      setUsageLedger((prev) => pushUsageLedger(prev, usage, true));
       const last = [...next].reverse().find((m) => m.role === "assistant");
       if (last) {
         await Clipboard.copy(last.content);
@@ -139,7 +150,7 @@ export default function AnalyzeFileCommand() {
       await showToast({
         style: Toast.Style.Success,
         title: "Regenerated",
-        message: `Copied to clipboard.${formatUsageHint(usage ?? undefined, showTokenUsagePref)}`,
+        message: `Copied to clipboard.${formatUsageHint(usage ?? undefined, showTokenUsagePref, usageHintOpts)}`,
       });
     } catch (err) {
       loading.hide();
@@ -149,7 +160,7 @@ export default function AnalyzeFileCommand() {
         message: formatVisionError(err),
       });
     }
-  }, [messages, prefs, session, showTokenUsagePref, effectiveSessionModel]);
+  }, [messages, prefs, session, showTokenUsagePref, usageHintOpts, effectiveSessionModel]);
 
   const openSessionModelPicker = useCallback(() => {
     push(
@@ -183,6 +194,23 @@ export default function AnalyzeFileCommand() {
       message: "Full conversation as Markdown.",
     });
   }, [messages]);
+
+  const exportConversationToFile = useCallback(async () => {
+    try {
+      exportChatConversationToFile(messages, effectiveSessionModel, sessionUsageTotal);
+      await showToast({
+        style: Toast.Style.Success,
+        title: "Exported",
+        message: "Markdown saved; Finder opened to the file.",
+      });
+    } catch (err) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Export failed",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, [messages, effectiveSessionModel, sessionUsageTotal]);
 
   async function handleSubmit(values: FormValues) {
     const path = values.imageFile?.[0]?.trim() ?? pickedFiles[0]?.trim();
@@ -233,6 +261,7 @@ export default function AnalyzeFileCommand() {
       setSession({ source: "screen", screenBase64: base64, screenMediaType: mediaType });
       setSessionModel(effectiveSm);
       setLastRequestUsage(usage ?? null);
+      setUsageLedger(usage ? [usage] : []);
       setPhase("chat");
       loading.hide();
       await Clipboard.copy(answer);
@@ -248,7 +277,7 @@ export default function AnalyzeFileCommand() {
       await showToast({
         style: Toast.Style.Success,
         title: "Response ready",
-        message: `Copied to clipboard. Use Continue chat for follow-ups.${formatUsageHint(usage, showTokenUsagePref)}`,
+        message: `Copied to clipboard. Use Continue chat for follow-ups.${formatUsageHint(usage, showTokenUsagePref, { modelValue: effectiveSm, showEstimatedCost: showEstimatedCostPref })}`,
       });
     } catch (err) {
       loading.hide();
@@ -267,9 +296,13 @@ export default function AnalyzeFileCommand() {
         messages={messages}
         effectiveSessionModel={effectiveSessionModel}
         lastRequestUsage={lastRequestUsage}
+        sessionUsageTotal={sessionUsageTotal}
+        usageCallCount={usageLedger.length}
         showTokenUsage={showTokenUsagePref}
+        showEstimatedCost={showEstimatedCostPref}
         openReply={openReply}
         copyConversationMarkdown={copyConversationMarkdown}
+        exportConversationToFile={exportConversationToFile}
         runRegenerate={runRegenerate}
         openSessionModelPicker={openSessionModelPicker}
         startOver={startOver}
