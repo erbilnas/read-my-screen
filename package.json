@@ -39,8 +39,8 @@
       "name": "quick-clipboard",
       "title": "Quick: Clipboard Image",
       "subtitle": "Read My Screen",
-      "description": "One shortcut: analyze the file-backed image on your clipboard with your default model — fast OCR, error help, or UI notes.",
-      "mode": "no-view"
+      "description": "One shortcut: analyze the image on your clipboard with your default model — shows the response immediately.",
+      "mode": "view"
     },
     {
       "name": "quick-browser",

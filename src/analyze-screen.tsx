@@ -526,7 +526,7 @@ export default function AnalyzeScreenCommand() {
         info={
           contentSource === "browser"
             ? "AppleScript picks the frontmost supported browser (Chrome, Safari, Arc, Dia, Brave, Edge, Opera, Vivaldi). The page is fetched as plain text—logins and SPAs may differ from what you see."
-            : "Capture from the screen or use a file-backed image from the clipboard."
+            : "Capture from the screen or use an image from the clipboard."
         }
       >
         <Form.Dropdown.Item value="screen" title="Screen capture" icon={Icon.Desktop} />
@@ -537,12 +537,12 @@ export default function AnalyzeScreenCommand() {
           id="mode"
           title="Capture"
           defaultValue="interactive"
-          info="Interactive and Window modes open macOS selection UI. Clipboard uses a file-backed image from the clipboard."
+          info="Interactive and Window modes open macOS selection UI. Clipboard reads copied images and screenshots."
         >
           <Form.Dropdown.Item value="interactive" title="Interactive region" icon={Icon.Crop} />
           <Form.Dropdown.Item value="fullscreen" title="Full screen" icon={Icon.Desktop} />
           <Form.Dropdown.Item value="window" title="Single window" icon={Icon.Window} />
-          <Form.Dropdown.Item value="clipboard" title="Clipboard image (file)" icon={Icon.Clipboard} />
+          <Form.Dropdown.Item value="clipboard" title="Clipboard image" icon={Icon.Clipboard} />
         </Form.Dropdown>
       ) : null}
       <Form.Dropdown
