@@ -1,7 +1,7 @@
 {
   "$schema": "https://raycast.com/schemas/extension.json",
   "name": "read-my-screen",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "Read My Screen",
   "description": "AI screenshot and browser reader: OCR, explain errors, summarize pages, and review UI with GPT-4o, Claude, or Gemini. Use region, window, or full-screen capture; clipboard images; local files; or the active browser tab. Bring your own API keys — requests go straight to OpenAI, Anthropic, or Google.",
   "icon": "extension-icon.png",
@@ -260,7 +260,7 @@
     "build": "npm run sync-model-prefs && ray build",
     "dev": "npm run sync-model-prefs && ray develop",
     "lint": "ray lint",
-    "fix-lint": "ray lint --fix",
+    "lint:fix": "ray lint --fix",
     "generate-icon": "node scripts/generate-icon.cjs",
     "publish": "npx @raycast/api@latest publish",
     "changeset": "changeset",

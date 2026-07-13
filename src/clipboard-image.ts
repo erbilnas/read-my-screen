@@ -85,10 +85,7 @@ function normalizeMediaType(mediaType: string): string {
 function assertSupportedMediaType(mediaType: string | undefined): string {
   const normalized = mediaType ? normalizeMediaType(mediaType) : undefined;
   if (!normalized || !SUPPORTED_IMAGE_MIME.has(normalized)) {
-    throw new ClipboardImageError(
-      "unsupported",
-      "Clipboard image is not a supported type (PNG, JPEG, WebP, or GIF).",
-    );
+    throw new ClipboardImageError("unsupported", "Clipboard image is not a supported type (PNG, JPEG, WebP, or GIF).");
   }
   return normalized;
 }
