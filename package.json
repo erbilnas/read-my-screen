@@ -87,20 +87,6 @@
       "required": false
     },
     {
-      "name": "anthropicApiKey",
-      "title": "Anthropic API key",
-      "description": "Used when a Claude model is selected. From console.anthropic.com",
-      "type": "password",
-      "required": false
-    },
-    {
-      "name": "geminiApiKey",
-      "title": "Google Gemini API key",
-      "description": "Used when a Gemini model is selected. From aistudio.google.com/apikey",
-      "type": "password",
-      "required": false
-    },
-    {
       "name": "model",
       "title": "Model",
       "description": "Provider and model (vision for screenshots, text for browser pages). Use the matching API key.",
@@ -229,24 +215,6 @@
       "type": "textfield",
       "required": false,
       "default": "Describe what you see on the screen. Call out any text, UI elements, errors, or notable details."
-    },
-    {
-      "name": "showTokenUsage",
-      "title": "Token usage",
-      "description": "When the provider returns usage data, show estimated input/output tokens in toasts and the chat header.",
-      "type": "checkbox",
-      "required": false,
-      "default": false,
-      "label": "Show estimated token usage"
-    },
-    {
-      "name": "showEstimatedCost",
-      "title": "Estimated API cost",
-      "description": "Show approximate USD next to token counts using public list prices (your invoice may differ). Requires token usage to be enabled.",
-      "type": "checkbox",
-      "required": false,
-      "default": false,
-      "label": "Show estimated cost (USD)"
     },
     {
       "name": "showTokenUsage",
