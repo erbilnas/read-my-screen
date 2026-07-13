@@ -87,6 +87,20 @@
       "required": false
     },
     {
+      "name": "anthropicApiKey",
+      "title": "Anthropic API key",
+      "description": "Used when a Claude model is selected. From console.anthropic.com",
+      "type": "password",
+      "required": false
+    },
+    {
+      "name": "geminiApiKey",
+      "title": "Google Gemini API key",
+      "description": "Used when a Gemini model is selected. From aistudio.google.com/apikey",
+      "type": "password",
+      "required": false
+    },
+    {
       "name": "model",
       "title": "Model",
       "description": "Provider and model (vision for screenshots, text for browser pages). Use the matching API key.",
@@ -233,6 +247,24 @@
       "required": false,
       "default": false,
       "label": "Show estimated cost (USD)"
+    },
+    {
+      "name": "showTokenUsage",
+      "title": "Token usage",
+      "description": "When the provider returns usage data, show estimated input/output tokens in toasts and the chat header.",
+      "type": "checkbox",
+      "required": false,
+      "default": false,
+      "label": "Show estimated token usage"
+    },
+    {
+      "name": "showEstimatedCost",
+      "title": "Estimated API cost",
+      "description": "Show approximate USD next to token counts using public list prices (your invoice may differ). Requires token usage to be enabled.",
+      "type": "checkbox",
+      "required": false,
+      "default": false,
+      "label": "Show estimated cost (USD)"
     }
   ],
   "overrides": {
@@ -248,12 +280,12 @@
   "devDependencies": {
     "@changesets/cli": "^2.30.0",
     "@raycast/eslint-config": "^2.0.4",
-    "@types/node": "^22.10.0",
+    "@types/node": "^22.20.1",
     "@types/react": "18.3.12",
     "eslint": "^9.16.0",
     "prettier": "^3.4.2",
     "sharp": "^0.34.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "sync-model-prefs": "node scripts/sync-model-preferences.cjs",
