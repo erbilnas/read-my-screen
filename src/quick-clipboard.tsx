@@ -1,8 +1,8 @@
-import { Action, ActionPanel, Clipboard, Detail, Icon, getPreferenceValues } from "@raycast/api";
+import { Action, ActionPanel, Detail, Icon, getPreferenceValues } from "@raycast/api";
 import { useEffect, useState } from "react";
 import { analyzeImage, formatVisionError } from "./analyze-image";
 import { ClipboardImageError, readImageFromClipboard } from "./clipboard-image";
-import { parseModelPreference } from "./model";
+import { parseModelPreference, resolvedModelPreference } from "./model";
 import { formatUsageHint } from "./token-usage";
 import { assistantDetailMarkdown } from "./ui/markdown";
 
@@ -21,7 +21,7 @@ export default function QuickClipboardCommand() {
       const defaultPrompt =
         prefs.defaultPrompt?.trim() ||
         "Describe what you see on the screen. Call out any text, UI elements, errors, or notable details.";
-      const modelPref = prefs.model?.trim() || "openai:gpt-4o-mini";
+      const modelPref = resolvedModelPreference(prefs.model);
       const usageOpts = {
         modelValue: modelPref,
         showEstimatedCost: showTok && prefs.showEstimatedCost === true,

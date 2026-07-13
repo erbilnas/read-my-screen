@@ -20,7 +20,12 @@ import { ClipboardImageError, readImageFromClipboard } from "./clipboard-image";
 import { CaptureError, CaptureMode, captureToFile, safeUnlink } from "./capture";
 import { type ChatTurn, continueConversation, type SessionContext } from "./continue-chat";
 import { FetchPageError, fetchPageAsPlainText } from "./fetch-page-text";
-import { effectiveModelPreference, MODEL_PREFERENCE_OPTIONS, parseModelPreference } from "./model";
+import {
+  effectiveModelPreference,
+  effectiveSessionModelPreference,
+  MODEL_PREFERENCE_OPTIONS,
+  parseModelPreference,
+} from "./model";
 import { regenerateLastTurn } from "./regenerate-turn";
 import {
   BUILTIN_PROMPT_PRESETS,
@@ -93,7 +98,7 @@ export default function AnalyzeScreenCommand() {
   const showTokenUsagePref = prefs.showTokenUsage === true;
   const showEstimatedCostPref = showTokenUsagePref && prefs.showEstimatedCost === true;
 
-  const effectiveSessionModel = sessionModel.trim() || prefs.model?.trim() || "openai:gpt-4o-mini";
+  const effectiveSessionModel = effectiveSessionModelPreference(sessionModel, prefs.model);
   const usageHintOpts = useMemo(
     () => ({ modelValue: effectiveSessionModel, showEstimatedCost: showEstimatedCostPref }),
     [effectiveSessionModel, showEstimatedCostPref],
@@ -255,7 +260,7 @@ export default function AnalyzeScreenCommand() {
     (record: StoredSession) => {
       setLastRequestUsage(null);
       setUsageLedger([]);
-      setSessionModel(prefs.model?.trim() || "openai:gpt-4o-mini");
+      setSessionModel(effectiveSessionModelPreference(undefined, prefs.model));
       if (record.source === "browser") {
         setMessages(record.messages);
         setSession({ source: "browser" });
